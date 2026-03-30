@@ -241,24 +241,7 @@ class WeiBoParser(BaseParser):
         # url=f"https://weibo.com/ajax/statuses/show?id={weibo_id}&locale=zh-CN&isGetLongText=true"
 
         # 关键：不带 cookie、不跟随重定向（避免二跳携 cookie）
-        # async with self.session.get(
-        #     url=url,
-        #     headers=headers,
-        #     allow_redirects=False,
-        # ) as resp:
-        #     if resp.status != 200:
-        #         if resp.status in (403, 418):
-        #             raise ParseException(
-        #                 f"被风控拦截（{resp.status}），可尝试更换 UA/Referer 或稍后重试"
-        #             )
-        #         raise ParseException(f"获取数据失败 {resp.status} {resp.reason}")
-
-        #     ctype = resp.headers.get("content-type", "")
-        #     if "application/json" not in ctype:
-        #         raise ParseException(
-        #             f"获取数据失败 content-type is not application/json (got: {ctype})"
-        #         )
-
+        # 调整代码逻辑，增加重试机制解决原代码解析微博出现 Connection closed 问题
         max_retries:int=3
         body_bytes = b""
 
@@ -304,14 +287,6 @@ class WeiBoParser(BaseParser):
             
         except msgspec.ValidationError as ve:
             raise ParseException(f"JSON 结构解析失败: {ve}")
-
-        # 用 bytes 更稳，避免编码歧义
-        # weibo_data = msgspec.json.decode(await resp.read(), type=WeiboResponse).data
-        # weibo_decode = msgspec.json.decode(await resp.read(), type=WeiboResponse)
-        # weibo_data= weibo_decode.data
-        # print("weibo data:", weibo_data)
-
-        # return self.build_weibo_data(weibo_data)
 
     def build_weibo_data(self, data: "WeiboData"):
         contents = []
@@ -374,100 +349,6 @@ class WeiBoParser(BaseParser):
 
         result.reverse()  # 反转结果数组
         return "".join(result)  # 将结果数组连接成字符串
-
-# class LargeInPic(Struct):
-#     url: str
-
-# class Pic(Struct):
-#     url: str
-#     large: LargeInPic | None = None  # 增加 None 防御边缘情况
-
-# class Urls(Struct):
-#     mp4_720p_mp4: str | None = None
-#     mp4_hd_mp4: str | None = None
-#     mp4_ld_mp4: str | None = None
-
-#     def get_video_url(self) -> str | None:
-#         return self.mp4_720p_mp4 or self.mp4_hd_mp4 or self.mp4_ld_mp4 or None
-
-# class PagePic(Struct):
-#     url: str
-
-# class PageInfo(Struct):
-#     title: str | None = None
-#     urls: Urls | None = None
-#     page_pic: PagePic | None = None
-
-# class User(Struct):
-#     id: int
-#     screen_name: str
-#     """用户昵称"""
-#     profile_image_url: str
-#     """头像"""
-
-# class WeiboData(Struct):
-#     user: User
-#     text: str
-#     bid: str
-#     created_at: str
-#     """发布时间 格式: `Thu Oct 02 14:39:33 +0800 2025`"""
-
-#     status_title: str | None = None
-#     pics: list[Pic] | None = None
-#     page_info: PageInfo | None = None
-#     retweeted_status: "WeiboData | None" = None  # 转发微博
-
-#     @property
-#     def title(self) -> str | None:
-#         return self.page_info.title if self.page_info else None
-
-#     @property
-#     def display_name(self) -> str:
-#         return self.user.screen_name
-
-#     @property
-#     def text_content(self) -> str:
-#         # 将 <br /> 转换为 \n
-#         text = self.text.replace("<br />", "\n")
-#         text = self.text.replace("<br/>", "\n") # 建议多加一个兼容
-#         # 去除 html 标签 (加上 re. 前缀)
-#         text = re.sub(r"<[^>]*>", "", text)
-#         return text
-
-#     @property
-#     def cover_url(self) -> str | None:
-#         if self.page_info is None:
-#             return None
-#         if self.page_info.page_pic:
-#             return self.page_info.page_pic.url
-#         return None
-
-#     @property
-#     def video_url(self) -> str | None:
-#         if self.page_info and self.page_info.urls:
-#             return self.page_info.urls.get_video_url()
-#         return None
-
-#     @property
-#     def image_urls(self) -> list[str]:
-#         if self.pics:
-#             # 增加对 large 节点是否存在的判断
-#             return [x.large.url for x in self.pics if x.large is not None]
-#         return []
-
-#     @property
-#     def url(self) -> str:
-#         return f"https://weibo.com/{self.user.id}/{self.bid}"
-
-#     @property
-#     def timestamp(self) -> int:
-#         # 修复时区计算问题，使用 datetime 处理带时区的字符串
-#         dt = datetime.strptime(self.created_at, "%a %b %d %H:%M:%S %z %Y")
-#         return int(dt.timestamp())
-
-# class WeiboResponse(Struct):
-#     ok: int
-#     data: WeiboData
 
 class LargeInPic(Struct):
     url: str

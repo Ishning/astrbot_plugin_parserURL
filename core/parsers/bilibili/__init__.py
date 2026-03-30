@@ -329,6 +329,7 @@ class BilibiliParser(BaseParser):
 
         author = self.create_author(room_data.name, room_data.avatar)
 
+        #修改 url直播链接
         # url = f"https://www.bilibili.com/blackboard/live/live-activity-player.html?enterTheRoom=0&cid={room_id}"
         url = f"https://live.bilibili.com/{room_id}"
         return self.result(
