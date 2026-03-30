@@ -98,19 +98,6 @@ class MessageSender:
         if render_card_override is not None:
             render_card = render_card_override
 
-        # 仅在“单一重媒体且无其他内容”时，才允许渲染卡片
-        # is_single_heavy = len(heavy) == 1 and not light
-        # render_card = is_single_heavy and self.cfg.single_heavy_render_card
-        # if render_card_override is not None:
-        #     render_card = render_card_override
-        # # 实际消息段数量（卡片也算一个段）
-        # seg_count = len(light) + len(heavy) + (1 if render_card else 0)
-
-        # # 达到阈值后，强制合并转发，避免刷屏
-        # force_merge = seg_count >= self.cfg.forward_threshold
-        # if force_merge_override is not None:
-        #     force_merge = force_merge_override
-
         seg_count = len(light) + len(heavy) + (1 if render_card else 0)
 
         force_merge = seg_count >= self.cfg.forward_threshold
@@ -125,27 +112,6 @@ class MessageSender:
             # "preview_card": render_card and not force_merge,
             "force_merge": force_merge,
         }
-
-    # 方法废弃
-    # async def _send_preview_card(
-    #     self,
-    #     event: AstrMessageEvent,
-    #     result: ParseResult,
-    #     plan: dict,
-    # ):
-    #     """
-    #     发送预览卡片（独立消息）
-
-    #     场景：
-    #     - 只有一个重媒体
-    #     - 未触发合并转发
-    #     - 卡片作为“预览”，不与正文混合
-    #     """
-    #     if not plan["preview_card"]:
-    #         return
-
-    #     if image_path := await self.renderer.render_card(result):
-    #         await event.send(event.chain_result([Image(self._to_file_uri(image_path))]))
 
     async def _build_segments(
         self,
@@ -163,9 +129,6 @@ class MessageSender:
 
         # 合并转发时，卡片以内联形式作为一个消息段参与合并
         # 取消原分开的，只要有渲染卡片就统一加入前面消息列表中
-        # if plan["render_card"] and plan["force_merge"]:
-        #     if image_path := await self.renderer.render_card(result):
-        #         segs.append(Image(self._to_file_uri(image_path)))
         if plan["render_card"]:
             if image_path := await self.renderer.render_card(result):
                 segs.append(Image(self._to_file_uri(image_path)))
@@ -310,7 +273,7 @@ class MessageSender:
         try:
             sent = False
             
-            # 车略
+            # 策略
             if plan["force_merge"]:
                 # 卡片+链接先行
                 if preview_segs:
@@ -325,7 +288,7 @@ class MessageSender:
                     
                 return sent
 
-            # 4. 未触发以上的车略
+            # 4. 未触发以上的策略
             all_segs = preview_segs + content_segs
             if not all_segs:
                 return False
@@ -353,14 +316,6 @@ class MessageSender:
             seg_meta = self._collect_seg_meta(preview_segs + content_segs)
             logger.error(f"发送解析结果失败： error={e}, segments={seg_meta}")
             return False
-
-        # try:
-        #     await event.send(event.chain_result(segs))
-        #     return True
-        # except Exception as e:
-        #     seg_meta = self._collect_seg_meta(segs)
-        #     logger.error(f"发送解析结果失败： error={e}, segments={seg_meta}")
-        #     return False
 
     @staticmethod
     def _collect_seg_meta(segs: list[BaseMessageComponent]) -> list[dict[str, str]]:
@@ -395,10 +350,6 @@ class MessageSender:
         """
         groups = self._resolve_groups(result)
 
-        # sent = False
-        # for group in groups:
-        #     sent = await self._send_group(event, result, group) or sent
-
         platform_name = result.platform.display_name
         match platform_name:
             case "B站" | "抖音" :
@@ -424,24 +375,3 @@ class MessageSender:
                 seg_meta = self._collect_seg_meta(segs)
                 logger.error(f"发送解析结果失败： error={e}, segments={seg_meta}")
                 return
-
-        # try:
-        #     await event.send(event.chain_result(segs))
-        # except Exception as e:
-        #     seg_meta = self._collect_seg_meta(segs)
-        #     logger.error(f"发送解析结果失败： error={e}, segments={seg_meta}")
-        #     return
-
-        # if not sent:
-        #     segs = self._build_text_fallback(result)
-        #     # segs =list()
-        #     if not segs:
-        #         logger.warning("发送结果为空，不执行发送")
-        #         return
-
-        #     try:
-        #         await event.send(event.chain_result(segs))
-        #     except Exception as e:
-        #         seg_meta = self._collect_seg_meta(segs)
-        #         logger.error(f"发送解析结果失败： error={e}, segments={seg_meta}")
-        #     return
