@@ -265,15 +265,17 @@ class BilibiliParser(BaseParser):
         Returns:
             ParseResult: 解析结果
         """
-        from .opus import ImageNode, OpusItem, TextNode
+        from .opus import ImageNode, OpusItem
 
         opus_info = await bili_opus.get_info()
         if not isinstance(opus_info, dict):
             raise ParseException("获取图文动态信息失败")
+        
         # 转换为结构体
         opus_data = convert(opus_info, OpusItem)
         logger.debug(f"opus_data: {opus_data}")
         author = self.create_author(*opus_data.name_avatar)
+
         # 按顺序处理图文内容（参考 parse_read 的逻辑）
         contents: list[MediaContent] = []
         current_text = ""
@@ -285,8 +287,10 @@ class BilibiliParser(BaseParser):
                     )
                 )
                 current_text = ""
-            elif isinstance(node, TextNode):
-                current_text += node.text
+            #调整文本节点，防止因为出现 # 等符号被跳过，只要有 text属性就处理为文本节点拼接下来
+            elif hasattr(node, "text"):
+                current_text += str(node.text)
+
         return self.result(
             title=opus_data.title,
             author=author,

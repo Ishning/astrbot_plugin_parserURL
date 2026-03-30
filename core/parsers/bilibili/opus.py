@@ -143,11 +143,35 @@ class OpusItem(Struct):
 
     def _extract_text_from_nodes(self, nodes: list[dict[str, Any]]) -> str:
         """从节点列表中提取文本内容"""
+        #解决 b站富文本问题
         text_content = ""
         for node in nodes:
-            if node.get("type") in [
-                "TEXT_NODE_TYPE_WORD",
-                "TEXT_NODE_TYPE_RICH",
-            ] and node.get("word"):
-                text_content += node["word"].get("words", "")
+            # 确保 node 确实是一个字典，嗯，应该是吧
+            if not node or not isinstance(node, dict):
+                continue
+
+            # 提取普通文字 (type TEXT_NODE_TYPE_WORD，word 字段)
+            word_dict = node.get("word")
+            if isinstance(word_dict, dict) and word_dict.get("words"):
+                text_content += str(word_dict["words"])
+                continue
+                
+            # fix：修复专栏里富文本发送出去缺失的问题 (打 log发现b站放在 type TEXT_NODE_TYPE_RICH，在 rich字段内s)
+            # 包含：#话题#、@用户、emoji 等
+            rich_dict = node.get("rich")
+            if isinstance(rich_dict, dict):
+                # 直接拿 orig_text（带有 # 和 [] 的原文本），如果没有就拿 text 兜底
+                rich_text = rich_dict.get("orig_text") or rich_dict.get("text")
+                if rich_text:
+                    text_content += str(rich_text)
+                continue
+
+            # 兜底格式直接存放在根节点的属性，并且兼容老格式，免得漏掉一些文本内容，鬼知道 b站后面会不会又改个新格式
+            if node.get("orig_text"):
+                text_content += str(node["orig_text"])
+                continue
+            if node.get("text"):
+                text_content += str(node["text"])
+                continue
+
         return text_content
