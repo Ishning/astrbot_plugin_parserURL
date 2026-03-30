@@ -14,7 +14,7 @@ _✨ 链接解析器 ✨_
 </div>
 
 ## 📖 介绍
-原项目基于 astrbot_plugin_parser 做了一些修改
+项目基于 [astrbot_plugin_parser](https://github.com/Zhalslar/astrbot_plugin_parser) 做了一些自定义自用修改，根据使用修改了一部分代码和实现效果
 
 当前支持的平台和类型：
 
