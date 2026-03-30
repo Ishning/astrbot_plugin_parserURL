@@ -549,7 +549,7 @@ class Renderer:
             sections.append(TitleSectionData(height=title_height, lines=title_lines))
 
         # 3. 封面，图集，图文内容
-        # 【修复点 1】：安全处理 cover_path，防止值为 None 时 await 导致崩溃
+        # 处理 cover_path 在多图情况下使用 await 防止值为 None 时 await 导致的崩溃
         cover_p_resolved: Path | None = None
         try:
             _cover = result.cover_path
@@ -625,6 +625,7 @@ class Renderer:
         # 加载图片
         img_path = await graphics_content.get_path()
         with Image.open(img_path) as original_img:
+            # 增加一层保护，以防止图像崩溃导致整个渲染失败
             if original_img.mode not in ("RGB", "RGBA"):
                 original_img = original_img.convert("RGB")
             # 调整图片尺寸以适应内容宽度
@@ -757,7 +758,7 @@ class Renderer:
         img_count = len(img_contents)
 
         for img_content in img_contents:
-            # 【修复点 2】：增加 try...except 保护，一张图下载失败就跳过，不要毁掉整张卡片
+            # 增加 try...except 让在多图时候某一图下载失败时就跳过，而不是避免整个崩溃让渲染中断
             try:
                 img_path = await img_content.get_path()
             except Exception as e:
@@ -815,7 +816,7 @@ class Renderer:
             return None
 
         with Image.open(img_path) as original_img:
-            # 【修复点 3】：兼容 GIF/WEBP 等带调色板的图片，强制转为 RGB，防止缩放时报错
+            # 兼容 Gif、WEBP 等带调色板的图片，让强制转为 RGB，防止缩放时报错
             if original_img.mode not in ("RGB", "RGBA"):
                 img = original_img.convert("RGB")
             else:
