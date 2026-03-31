@@ -269,6 +269,10 @@ class BilibiliParser(BaseParser):
         from .opus import ImageNode, OpusItem
 
         opus_info = await bili_opus.get_info()
+        # import json
+        # with open("bili_debug.json", "w", encoding="utf-8") as f:
+        #     json.dump(opus_info, f, ensure_ascii=False, indent=2)
+        
         if not isinstance(opus_info, dict):
             raise ParseException("获取图文动态信息失败")
         
@@ -291,8 +295,34 @@ class BilibiliParser(BaseParser):
             found_titles = {}
             _find_title(opus_info, found_titles)
             raw_title = found_titles.get("major_title")
+
         except Exception as e:
-            logger.debug(f"全树扫描标题失败: {e}")
+            logger.warning(f"扫描标题失败: {e}")
+        
+        #判断给的opus链接是专栏还是动态
+        is_article = await self._check_is_article(opus_info)
+
+        #先试试能否在接口返回的 json里找到封面,若没有只能从网页拉取，目前是否有其它相关接口提供了封面还不清楚，没去具体查找
+        raw_cover_url = None
+        if is_article:
+            raw_cover_url = await self.__cover_from_json(opus_info)
+            if not raw_cover_url:
+                raw_cover_url = await self._get_web_cover(bili_opus)
+                logger.info(f"获取封面url: {raw_cover_url}")
+        
+        #加上大小限制免得拿到原图过大
+        if raw_cover_url:
+            if raw_cover_url.startswith("//"):
+                raw_cover_url = f"https:{raw_cover_url}"
+            if "@" not in raw_cover_url:
+                raw_cover_url += "@700w.webp"
+
+        #下载封面
+        cover_task = None
+        if raw_cover_url:
+            cover_task = self.downloader.download_img(
+                raw_cover_url, headers=self.headers, proxy=self.proxy
+            )
 
         # 转换为结构体
         opus_data = convert(opus_info, OpusItem)
@@ -333,9 +363,105 @@ class BilibiliParser(BaseParser):
             title=final_title,
             author=author,
             timestamp=opus_data.timestamp,
+            cover=cover_task, #增加封面
             contents=contents,
             text=current_text.strip(),
         )
+    
+    async def _check_is_article(self, opus_info: dict) -> bool:
+        """检查是否为专栏文章
+
+        Args:
+            opus_info (dict): Opus 信息字典
+
+        Returns:
+            bool: 是否为专栏文章，专栏 comment_type 为固定的12值
+        """
+        try:
+            item_basic = opus_info.get("item", {}).get("basic", {})
+            if item_basic.get("comment_type") == 12:
+                return True
+        except Exception as e:
+            logger.warning(f"判断文章类型失败: {e}")
+            return False
+        return False
+
+    async def __cover_from_json(self, opus_info: dict) -> str | None:
+        """尝试从 Opus JSON 中提取封面 URL
+
+        Args:
+            opus_info (dict): Opus 信息字典
+
+        Returns:
+            str | None: 封面 URL,如果未找到则返回 None
+        """
+        try:
+            modules_data = opus_info.get("item", {}).get("modules", [])
+            mod_list = modules_data if isinstance(modules_data, list) else list(modules_data.values()) if isinstance(modules_data, dict) else []
+            for mod in mod_list:
+                if not isinstance(mod, dict): continue
+                major = mod.get("module_dynamic", {}).get("major", {})
+                for t in ["opus", "article", "common"]:
+                    target = major.get(t, {})
+                    if isinstance(target, dict):
+                        cov = target.get("cover") or target.get("summary", {}).get("cover")
+                        if isinstance(cov, str) and cov:
+                            return cov
+                        elif isinstance(target.get("covers"), list) and target["covers"]:
+                            return str(target["covers"][0])
+        except Exception as e:
+            logger.warning(f"从接口Json中提取封面失败: {e}")
+        return None
+
+    async def _get_web_cover(self, bili_opus: Opus) -> str | None:
+        """从网页源码中提取封面 URL，从接口中没找到封面相关的字段，
+           就采用这种网页爬虫的方式来提取封面的url链接，若有找到接口以后可以取消掉这个方法
+           毕竟不太好，可能会被反爬针对，暂时先这么写着后面花时间再找找
+
+        Args:
+            bili_opus (Opus): Opus 对象
+
+        Returns:
+            str | None: 封面 URL,如果未找到则返回 None
+        """
+        import re
+        import json
+        import aiohttp
+        try:
+            if not hasattr(bili_opus, "get_opus_id"):
+                return None
+                
+            opus_url = f"https://www.bilibili.com/opus/{bili_opus.get_opus_id()}"
+            logger.info(f"使用网页获取封面: {opus_url}")
+            
+            async with aiohttp.ClientSession() as session:
+                proxy_url = getattr(self, "proxy", None)
+                req_headers = getattr(self, "headers", {})
+                
+                async with session.get(opus_url, headers=req_headers, proxy=proxy_url, timeout=5.0) as resp:
+                    html_text = await resp.text()
+                    
+                    # 找寻 dom window.__INITIAL_STATE__
+                    state_match = re.search(r'window\.__INITIAL_STATE__\s*=\s*({.*?});', html_text)
+                    if state_match:
+                        try:
+                            state_json = json.loads(state_match.group(1))
+                            cov = state_json.get("detail", {}).get("basic", {}).get("cover") or \
+                                  state_json.get("detail", {}).get("modules", [{}])[0].get("module_dynamic", {}).get("major", {}).get("opus", {}).get("summary", {}).get("cover")
+                            if cov: return cov
+                        except: pass
+
+                    # 匹配 b-img__inner 字段
+                    img_match = re.search(r'b-img__inner.*?src="([^"]+?hdslb\.com/bfs/new_dyn/[^"]+)"', html_text, re.S)
+                    if img_match: return img_match.group(1)
+
+                    # 上面要是都找不到直接正则匹配图片域名,比较的暴力匹配╰(*°▽°*)╯
+                    brute_match = re.search(r'//i0\.hdslb\.com/bfs/new_dyn/[a-zA-Z0-9_\.]+', html_text)
+                    if brute_match: return brute_match.group(0)
+                    
+        except Exception as e:
+            logger.warning(f"网页获取失败: {e}")
+        return None
 
     async def parse_live(self, room_id: int):
         """解析直播信息

@@ -197,6 +197,8 @@ class ParseResult:
     """渲染图片"""
     _resource_id: str | None = field(init=False, repr=False)
     """资源 ID"""
+    cover: Path | Task[Path] | None = None
+    """封面 ID,独立的非视频截取"""
 
     @property
     def header(self) -> str | None:
@@ -250,6 +252,14 @@ class ParseResult:
 
     @property
     async def cover_path(self) -> Path | None:
+        # 优先使用独立传入的文章、动态封面这种
+        if self.cover is not None:
+            if isinstance(self.cover, Path):
+                return self.cover
+            self.cover = await self.cover
+            return self.cover
+        
+        # 然后再再是原来的视频截取
         """获取封面路径"""
         for cont in self.contents:
             if isinstance(cont, VideoContent):
@@ -357,3 +367,4 @@ class ParseResultKwargs(TypedDict, total=False):
     author: Author | None
     extra: dict[str, Any]
     repost: ParseResult | None
+    cover: Path | Task[Path] | None #添加获取封面的
