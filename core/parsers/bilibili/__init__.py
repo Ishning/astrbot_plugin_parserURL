@@ -265,20 +265,44 @@ class BilibiliParser(BaseParser):
         Returns:
             ParseResult: 解析结果
         """
+        import re
         from .opus import ImageNode, OpusItem
 
         opus_info = await bili_opus.get_info()
         if not isinstance(opus_info, dict):
             raise ParseException("获取图文动态信息失败")
         
+        # 结构体
+        raw_title = None
+        try:
+            def _find_title(data, found):
+                if isinstance(data, dict):
+                    for t in ["opus", "draw", "article"]:
+                        if t in data and isinstance(data[t], dict) and data[t].get("title"):
+                            found["major_title"] = str(data[t]["title"])
+                    for v in data.values():
+                        if "major_title" in found: return
+                        _find_title(v, found)
+                elif isinstance(data, list):
+                    for item in data:
+                        if "major_title" in found: return
+                        _find_title(item, found)
+
+            found_titles = {}
+            _find_title(opus_info, found_titles)
+            raw_title = found_titles.get("major_title")
+        except Exception as e:
+            logger.debug(f"全树扫描标题失败: {e}")
+
         # 转换为结构体
         opus_data = convert(opus_info, OpusItem)
-        logger.debug(f"opus_data: {opus_data}")
         author = self.create_author(*opus_data.name_avatar)
 
-        # 按顺序处理图文内容（参考 parse_read 的逻辑）
+        # 按顺序处理图文内容
         contents: list[MediaContent] = []
         current_text = ""
+        full_text = "" #用于全局的提取,因为有些不在一起可能会分开，不然 current_text可能会清空导致提取不到
+
         for node in opus_data.gen_text_img():
             if isinstance(node, ImageNode):
                 contents.append(
@@ -287,12 +311,26 @@ class BilibiliParser(BaseParser):
                     )
                 )
                 current_text = ""
-            #调整文本节点，防止因为出现 # 等符号被跳过，只要有 text属性就处理为文本节点拼接下来
             elif hasattr(node, "text"):
-                current_text += str(node.text)
+                text_part = str(node.text)
+                current_text += text_part
+                full_text += text_part
+
+        # 提取标题，大概类似 #www#这样 -> www,要是多个就凭借起来
+        topic_matches = re.findall(r"#([^#]+)#", full_text)
+        topics_title = " ".join(topic_matches) if topic_matches else None
+
+        # 排列标题优先级,专栏，动态，最后都没有就默认 b站的标题去掉了小尾巴，去不去都行
+        final_title = raw_title
+        if not final_title:
+            final_title = topics_title
+        if not final_title:
+            final_title = opus_data.title
+            if final_title and final_title.endswith(" - 哔哩哔哩"):
+                final_title = final_title.replace(" - 哔哩哔哩", "")
 
         return self.result(
-            title=opus_data.title,
+            title=final_title,
             author=author,
             timestamp=opus_data.timestamp,
             contents=contents,
