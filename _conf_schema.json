@@ -148,6 +148,58 @@
                         "type": "text",
                         "default": ""
                     },
+                    "sub_enable": {
+                        "description": "启用动态订阅",
+                        "hint": "开启后将定时检查目标UP主的最新动态并解析发送",
+                        "type": "bool",
+                        "default": true
+                    },
+                    "platform_name": {
+                        "description": "平台发送机器人名称",
+                        "hint": "订阅开启后让消息往指定机器人名称发送，具体名称详见AstrBot管理面板-机器人-机器人名称",
+                        "type": "list",
+                        "default":["default"]
+                    },
+                    "sub_uids": {
+                        "description": "订阅 UID",
+                        "hint": "请输入需要订阅的up主的 UID",
+                        "type": "list",
+                        "default": []
+                    },
+                    "sub_groups": {
+                        "description": "推送QQ群号",
+                        "hint": "接收新动态推送的群号列表。不需要推送群可留空",
+                        "type": "list",
+                        "default": []
+                    },
+                    "sub_users": {
+                        "description": "推送QQ个人号",
+                        "hint": "接收新动态推送的私人QQ号列表。不需要私聊推送可留空",
+                        "type": "list",
+                        "default": []
+                    },
+                    "sub_interval": {
+                        "description": "轮询间隔 (分钟)",
+                        "hint": "定时检查新动态的间隔时间",
+                        "type": "int",
+                        "slider": {
+                            "min": 2,
+                            "max": 20,
+                            "step": 1
+                        },
+                        "default": 3
+                    },
+                    "sub_delay": {
+                        "description": "防抖延迟 (秒)",
+                        "hint": "同时订阅多个UP主时，每次请求之间的缓时间",
+                        "type": "int",
+                        "slider": {
+                            "min": 2,
+                            "max": 20,
+                            "step": 1
+                        },
+                        "default": 5
+                    },
                     "video_codecs": {
                         "description": "B站视频编码",
                         "hint": "优先下载的编码类型，可选：AVC、AV1、HEV。推荐用兼容性较好的AVC",

@@ -158,6 +158,15 @@ class ParserItem(ConfigNode):
     video_codecs: str | None
     video_quality: str | None
 
+    #bilibili订阅相关，后续有其他可以再添加
+    sub_enable: bool | None
+    sub_uids: list[str] | None
+    sub_interval: int | None
+    sub_delay: int | None
+    sub_groups: list[str] | None
+    sub_users: list[str] | None
+    platform_name: list[str] | None
+
     @property
     def name(self) -> str:
         return self._data.get("__template_key")

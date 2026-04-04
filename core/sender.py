@@ -34,6 +34,9 @@ from .exception import (
 )
 from .render import Renderer
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from astrbot.core.star.context import Context
 
 class MessageSender:
     """
@@ -375,3 +378,79 @@ class MessageSender:
                 seg_meta = self._collect_seg_meta(segs)
                 logger.error(f"发送解析结果失败： error={e}, segments={seg_meta}")
                 return
+
+    async def send_proactive_msg(
+        self,
+        context: "Context",  # AstrBot 的Context
+        result: ParseResult,
+        sub_groups: list[str],
+        sub_users: list[str],
+        platforms: list[str],
+        dynamic_id: str | None = None,
+    ):
+        """
+        主动消息发送入口
+
+        """
+        from astrbot.core.star.context import Context as astrbotContext
+        # import astrbot.api.message_components as Comp
+        from astrbot.api.all import MessageChain
+
+        plan = self._build_send_plan(result, force_merge_override=False)
+        preview_segs = []
+
+        if plan["render_card"]:
+            if image_path := await self.renderer.render_card(result):
+                preview_segs.append(Image(self._to_file_uri(image_path)))
+
+        text_segs = self._build_text_fallback_for_url(result)
+        if text_segs:
+            preview_segs.extend(text_segs)
+
+        plan["render_card"] = False
+        content_segs = await self._build_segments(result, plan)
+        all_segs = preview_segs + content_segs
+
+        dynamic_url=None
+        if dynamic_id:
+            dynamic_url=f"https://t.bilibili.com/{dynamic_id}"
+            all_segs.append(Plain(f"\n动态链接： {dynamic_url}"))
+
+        if not all_segs:
+            logger.warning("内容为空，不发送")
+            return
+
+        chain = MessageChain(all_segs)
+
+        #获取消息发送机器人
+        # platform_name=getattr(self.cfg.parsers_template, "platform_name", ["default"])
+        if not platforms:
+            platforms = ["default"]
+
+        for platform in platforms:
+            platform = str(platform).strip()
+            if not platform: continue
+
+            # 群
+            for g in sub_groups:
+                if not g: continue
+                try:
+                    session = f"{platform}:GroupMessage:{g}"
+
+                    # await astrbotContext.send_message(context, session, chain)
+                    await context.send_message(session, chain)
+                    logger.info(f"[订阅发送成功] 通过机器人{platform} 发送到群: {g}")
+                except Exception as e:
+                    logger.error(f"[订阅发送失败] 通过机器人{platform} 发送群 {g} 发送失败: {e}")
+
+            # 个人
+            for u in sub_users:
+                if not u: continue
+                try:
+                    session = f"{platform}:FriendMessage:{u}"
+
+                    # await astrbotContext.send_message(context, session, chain)
+                    await context.send_message(session, chain)
+                    logger.info(f"[订阅发送成功] 通过机器人{platform} 发送到个人: {u}")
+                except Exception as e:
+                    logger.error(f"[订阅发送失败] 通过机器人{platform} 发送个人 {u} 发送失败: {e}")
