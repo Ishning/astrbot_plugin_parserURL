@@ -160,6 +160,12 @@
                         "type": "list",
                         "default":["default"]
                     },
+                    "platform_botid": {
+                        "description": "订阅发送账号",
+                        "hint": "非必填，但还是建议填入需要通过主动发送的QQ账户",
+                        "type": "list",
+                        "default": []
+                    },
                     "sub_uids": {
                         "description": "订阅 UID",
                         "hint": "请输入需要订阅的up主的 UID",
