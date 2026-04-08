@@ -161,16 +161,22 @@
                         "default":["default"]
                     },
                     "platform_botid": {
-                        "description": "订阅发送账号",
-                        "hint": "非必填，但还是建议填入需要通过主动发送的QQ账户",
+                        "description": "[非必填]订阅发送账号",
+                        "hint": "可以不用填写，这个影响发送出去显示的头像和昵称，留空即可",
                         "type": "list",
                         "default": []
                     },
                     "sub_uids": {
                         "description": "订阅 UID",
-                        "hint": "请输入需要订阅的up主的 UID",
+                        "hint": "请输入需要订阅的up主的 UID，该配置将会发送至群和个人。若要分开可填写下面的仅推送至群/个人配置项",
                         "type": "list",
                         "default": []
+                    },
+                    "only_previewCard":{
+                        "description": "是否仅发送预览卡片",
+                        "hint": "开启后订阅消息将只包含预览卡片，不再发送正文、视频、图片等富媒体信息",
+                        "type": "bool",
+                        "default": false
                     },
                     "sub_groups": {
                         "description": "推送QQ群号",
@@ -178,9 +184,21 @@
                         "type": "list",
                         "default": []
                     },
+                    "only_sub_group_uid":{
+                        "description": "订阅 UID（仅推送至群）",
+                        "hint": "该 UID订阅仅推送至群",
+                        "type": "list",
+                        "default": []
+                    },
                     "sub_users": {
                         "description": "推送QQ个人号",
                         "hint": "接收新动态推送的私人QQ号列表。不需要私聊推送可留空",
+                        "type": "list",
+                        "default": []
+                    },
+                    "only_sub_users_uid":{
+                        "description": "订阅 UID（仅推送至个人）",
+                        "hint": "该 UID订阅仅推送至个人",
                         "type": "list",
                         "default": []
                     },
@@ -197,7 +215,7 @@
                     },
                     "sub_delay": {
                         "description": "防抖延迟 (秒)",
-                        "hint": "同时订阅多个UP主时，每次请求之间的缓时间",
+                        "hint": "同时订阅多个UP主时，每次请求之间的时间间隔。防止过于频繁请求",
                         "type": "int",
                         "slider": {
                             "min": 2,
