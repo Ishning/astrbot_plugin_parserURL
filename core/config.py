@@ -160,16 +160,12 @@ class ParserItem(ConfigNode):
 
     #bilibili订阅相关，后续有其他可以再添加
     sub_enable: bool | None
-    sub_uids: list[str] | None
     sub_interval: int | None
     sub_delay: int | None
-    sub_groups: list[str] | None
-    sub_users: list[str] | None
     platform_name: list[str] | None
     platform_botid: list[str] | None
+    sub_uids_users: list[str] | None
     only_previewCard: bool | None
-    only_sub_group_uid: list[str] | None
-    only_sub_users_uid: list[str] | None
 
     @property
     def name(self) -> str:
