@@ -115,7 +115,7 @@ class ParserPlugin(Star):
     async def on_message(self, event: AstrMessageEvent):
         """消息的统一入口"""
         umo = event.unified_msg_origin
-
+        logger.debug(f"DEBUG: 当前消息的 session 字符串是: {event.unified_msg_origin}")
         # 白名单
         if self.cfg.whitelist and umo not in self.cfg.whitelist:
             return

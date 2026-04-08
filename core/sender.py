@@ -387,14 +387,16 @@ class MessageSender:
         sub_users: list[str],
         platforms: list[str],
         dynamic_id: str | None = None,
+        platform_botid: list[str] | None = None,
+        only_previewCard: bool = False,
     ):
         """
         主动消息发送入口
 
         """
-        from astrbot.core.star.context import Context as astrbotContext
         # import astrbot.api.message_components as Comp
         from astrbot.api.all import MessageChain
+        import asyncio
 
         plan = self._build_send_plan(result, force_merge_override=False)
         preview_segs = []
@@ -407,20 +409,25 @@ class MessageSender:
         if text_segs:
             preview_segs.extend(text_segs)
 
-        plan["render_card"] = False
-        content_segs = await self._build_segments(result, plan)
-        all_segs = preview_segs + content_segs
+        if only_previewCard:
+            content_segs = []
+            logger.debug("已开启 only_previewCard，跳过媒体内容的解析与发送。")
+        else:
+            plan["render_card"] = False
+            content_segs = await self._build_segments(result, plan)
 
-        dynamic_url=None
+        info_segs = list(preview_segs)
         if dynamic_id:
-            dynamic_url=f"https://t.bilibili.com/{dynamic_id}"
-            all_segs.append(Plain(f"\n动态链接： {dynamic_url}"))
+            dynamic_url = f"https://t.bilibili.com/{dynamic_id}"
+            info_segs.append(Plain(f"🔗链接： {dynamic_url}"))
 
-        if not all_segs:
-            logger.warning("内容为空，不发送")
+        info_chain = MessageChain(info_segs) if info_segs else None
+
+        if not info_chain and not content_segs:
+            logger.warning("推送内容为空，不发送")
             return
 
-        chain = MessageChain(all_segs)
+        # chain = MessageChain(all_segs)
 
         #获取消息发送机器人
         # platform_name=getattr(self.cfg.parsers_template, "platform_name", ["default"])
@@ -431,6 +438,39 @@ class MessageSender:
             platform = str(platform).strip()
             if not platform: continue
 
+            if platform_botid and isinstance(platform_botid, list) and str(platform_botid[0]).strip():
+                bot_self_id = str(platform_botid[0]).strip()
+            else:
+                bot_self_id = None
+            bot_display_name = "B站动态推送"
+
+            media_chain = None
+            if content_segs:
+                forward_threshold = getattr(self.cfg, "forward_threshold", 2)
+                
+                if len(content_segs) >= forward_threshold:
+                    # 参考 _merge_segments_if_needed 方法创建一个空的 Nodes 容器然后添加相关富媒体
+                    nodes_container = Nodes([])
+
+                    for seg in content_segs:
+                        nod = Node(
+                            uin=bot_self_id,
+                            name=bot_display_name,
+                            content=[seg]
+                        )
+                        nodes_container.nodes.append(nod)
+
+                    # single = Node(
+                    #     uin=bot_self_id,
+                    #     name=bot_display_name,
+                    #     content=content_segs
+                    # )
+                    # nodes_container.nodes.append(single)
+
+                    media_chain = MessageChain([nodes_container])
+                else:
+                    media_chain = MessageChain(content_segs)
+
             # 群
             for g in sub_groups:
                 if not g: continue
@@ -438,7 +478,14 @@ class MessageSender:
                     session = f"{platform}:GroupMessage:{g}"
 
                     # await astrbotContext.send_message(context, session, chain)
-                    await context.send_message(session, chain)
+                    # await context.send_message(session, chain)
+                    if info_chain:
+                        await context.send_message(session, info_chain)
+                    if info_chain and media_chain:
+                        await asyncio.sleep(0.5)
+
+                    if media_chain:
+                        await context.send_message(session, media_chain)
                     logger.info(f"[订阅发送成功] 通过机器人{platform} 发送到群: {g}")
                 except Exception as e:
                     logger.error(f"[订阅发送失败] 通过机器人{platform} 发送群 {g} 发送失败: {e}")
@@ -450,7 +497,15 @@ class MessageSender:
                     session = f"{platform}:FriendMessage:{u}"
 
                     # await astrbotContext.send_message(context, session, chain)
-                    await context.send_message(session, chain)
+                    # await context.send_message(session, chain)
+                    if info_chain:
+                        await context.send_message(session, info_chain)
+
+                    if info_chain and media_chain:
+                        await asyncio.sleep(0.5)
+
+                    if media_chain:
+                        await context.send_message(session, media_chain)
                     logger.info(f"[订阅发送成功] 通过机器人{platform} 发送到个人: {u}")
                 except Exception as e:
                     logger.error(f"[订阅发送失败] 通过机器人{platform} 发送个人 {u} 发送失败: {e}")

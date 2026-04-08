@@ -138,6 +138,8 @@ class DynamicInfo(Struct):
     visible: bool
     modules: DynamicModule
     basic: dict[str, Any] | None = None
+    orig: "DynamicInfo | None" = None
+    desc: dict[str, Any] | None = None
 
     @property
     def name(self) -> str:
@@ -170,6 +172,13 @@ class DynamicInfo(Struct):
         if major_info:
             major = convert(major_info, DynamicMajor)
             return major.text
+
+        #增加一个转发获取转发发送的正文
+        modules_dynamic = self.modules.module_dynamic
+        if modules_dynamic and modules_dynamic.get("desc"):
+            desc_info = convert(modules_dynamic["desc"], DynamicDesc)
+            return desc_info.text
+
         return None
 
     @property
@@ -190,6 +199,9 @@ class DynamicInfo(Struct):
             return major.cover_url
         return None
 
+class DynamicDesc(Struct):
+    """动态描述内容"""
+    text: str
 
 class DynamicData(Struct):
     """动态项目"""

@@ -166,6 +166,10 @@ class ParserItem(ConfigNode):
     sub_groups: list[str] | None
     sub_users: list[str] | None
     platform_name: list[str] | None
+    platform_botid: list[str] | None
+    only_previewCard: bool | None
+    only_sub_group_uid: list[str] | None
+    only_sub_users_uid: list[str] | None
 
     @property
     def name(self) -> str:
@@ -223,7 +227,7 @@ class PluginConfig(ConfigNode):
 
     parsers_template: list[dict[str, Any]]
 
-    _plugin_name = "astrbot_plugin_parser"
+    _plugin_name = "astrbot_plugin_parserurl"
 
     def __init__(self, config: AstrBotConfig, context: Context):
         super().__init__(config)
