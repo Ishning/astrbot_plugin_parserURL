@@ -148,6 +148,82 @@
                         "type": "text",
                         "default": ""
                     },
+                    "sub_enable": {
+                        "description": "启用动态订阅",
+                        "hint": "开启后将定时检查目标UP主的最新动态并解析发送",
+                        "type": "bool",
+                        "default": true
+                    },
+                    "platform_name": {
+                        "description": "平台发送机器人名称",
+                        "hint": "订阅开启后让消息往指定机器人名称发送，具体名称详见AstrBot管理面板-机器人-机器人名称",
+                        "type": "list",
+                        "default":["default"]
+                    },
+                    "platform_botid": {
+                        "description": "[非必填]订阅发送账号",
+                        "hint": "可以不用填写，这个影响发送出去显示的头像和昵称，留空即可",
+                        "type": "list",
+                        "default": []
+                    },
+                    "sub_uids": {
+                        "description": "订阅 UID",
+                        "hint": "请输入需要订阅的up主的 UID，该配置将会发送至群和个人。若要分开可填写下面的仅推送至群/个人配置项",
+                        "type": "list",
+                        "default": []
+                    },
+                    "only_previewCard":{
+                        "description": "是否仅发送预览卡片",
+                        "hint": "开启后订阅消息将只包含预览卡片，不再发送正文、视频、图片等富媒体信息",
+                        "type": "bool",
+                        "default": false
+                    },
+                    "sub_groups": {
+                        "description": "推送QQ群号",
+                        "hint": "接收新动态推送的群号列表。不需要推送群可留空",
+                        "type": "list",
+                        "default": []
+                    },
+                    "only_sub_group_uid":{
+                        "description": "订阅 UID（仅推送至群）",
+                        "hint": "该 UID订阅仅推送至群",
+                        "type": "list",
+                        "default": []
+                    },
+                    "sub_users": {
+                        "description": "推送QQ个人号",
+                        "hint": "接收新动态推送的私人QQ号列表。不需要私聊推送可留空",
+                        "type": "list",
+                        "default": []
+                    },
+                    "only_sub_users_uid":{
+                        "description": "订阅 UID（仅推送至个人）",
+                        "hint": "该 UID订阅仅推送至个人",
+                        "type": "list",
+                        "default": []
+                    },
+                    "sub_interval": {
+                        "description": "轮询间隔 (分钟)",
+                        "hint": "定时检查新动态的间隔时间",
+                        "type": "int",
+                        "slider": {
+                            "min": 2,
+                            "max": 20,
+                            "step": 1
+                        },
+                        "default": 3
+                    },
+                    "sub_delay": {
+                        "description": "防抖延迟 (秒)",
+                        "hint": "同时订阅多个UP主时，每次请求之间的时间间隔。防止过于频繁请求",
+                        "type": "int",
+                        "slider": {
+                            "min": 2,
+                            "max": 20,
+                            "step": 1
+                        },
+                        "default": 5
+                    },
                     "video_codecs": {
                         "description": "B站视频编码",
                         "hint": "优先下载的编码类型，可选：AVC、AV1、HEV。推荐用兼容性较好的AVC",

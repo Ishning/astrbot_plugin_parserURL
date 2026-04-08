@@ -1,4 +1,5 @@
 import asyncio
+import json
 from re import Match
 from typing import ClassVar
 
@@ -19,6 +20,8 @@ from ..base import (
     handle,
 )
 from .login import BilibiliLogin
+
+from .dynamic import DynamicInfo
 
 # 选择客户端
 select_client("curl_cffi")
@@ -49,6 +52,45 @@ class BilibiliParser(BaseParser):
         )
 
         self.login = BilibiliLogin(config)
+
+        #订阅处理
+        self.sub_enable = getattr(self.mycfg, "sub_enable", False)
+        if self.sub_enable is None:
+            self.sub_enable = False
+
+        self.sub_uids = getattr(self.mycfg, "sub_uids", None) or []
+        self.sub_interval = getattr(self.mycfg, "sub_interval", None) or 3
+        self.sub_delay = getattr(self.mycfg, "sub_delay", None) or 5
+        self.sub_groups = getattr(self.mycfg, "sub_groups", None) or []
+        self.sub_users = getattr(self.mycfg, "sub_users", None) or []
+        self.platforms = getattr(self.mycfg, "platform_name", ["default"]) or ["default"]
+        self.platform_botid = getattr(self.mycfg, "platform_botid", None) or []
+        self.only_previewCard = getattr(self.mycfg, "only_previewCard", None) or False
+        self.only_sub_group_uid = getattr(self.mycfg, "only_sub_group_uid", None) or []
+        self.only_sub_users_uid = getattr(self.mycfg, "only_sub_users_uid", None) or []
+
+        #初始化状态缓存
+        self._last_dynamic_cache = {}
+
+        #用于存放订阅一些信息
+        self.bili_data_dir = config.data_dir / "bilibili"
+        self.bili_data_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_file = self.bili_data_dir / "bilibili_sub_cache.json"
+        if self.cache_file.exists():
+            try:
+                with open(self.cache_file, "r", encoding="utf-8") as f:
+                    self._last_dynamic_cache = json.load(f)
+                logger.info(f"已加载状态缓存，目前记录数为: {len(self._last_dynamic_cache)}")
+            except Exception as e:
+                logger.error(f"加载失败: {e}")
+
+        #如果开启了订阅且有配置 UID，启动后台轮询任务
+        if self.sub_enable and (self.sub_uids or self.only_sub_group_uid or self.only_sub_users_uid):
+            logger.info(
+                f"启动 B 站动态订阅: [全局] {len(self.sub_uids)}个, "
+                f"[仅群] {len(self.only_sub_group_uid)}个, [仅私聊] {len(self.only_sub_users_uid)}个。"
+            )
+            self._polling_task = asyncio.create_task(self._subscription_loop())
 
     @handle("b23.tv", r"b23\.tv/[A-Za-z\d\._?%&+\-=/#]+")
     @handle("bili2233", r"bili2233\.cn/[A-Za-z\d\._?%&+\-=/#]+")
@@ -117,14 +159,70 @@ class BilibiliParser(BaseParser):
     @handle("/read/", r"bilibili\.com/read/cv(?P<read_id>\d+)")
     async def _parse_read(self, searched: Match[str]):
         """解析专栏信息"""
+        # read_id = int(searched.group("read_id"))
+        # return await self.parse_read_with_opus(read_id)
+        # 调整为走 _parse_opus_obj
+        from bilibili_api.article import Article
+
         read_id = int(searched.group("read_id"))
-        return await self.parse_read_with_opus(read_id)
+        article = Article(read_id)
+        opus = await article.turn_to_opus()
+        return await self._parse_opus_obj(opus)
 
     @handle("/opus/", r"bilibili\.com/opus/(?P<opus_id>\d+)")
     async def _parse_opus(self, searched: Match[str]):
         """解析图文动态信息"""
         opus_id = int(searched.group("opus_id"))
         return await self.parse_opus(opus_id)
+
+    @handle("parserurl_test_push", r"^(?:/parserurl_test_push|parserurl_test_push)\s+(?P<dyid>\d+)$")
+    async def _test_push_manual(self, searched: Match[str]):
+        """手动触发订阅推送测试 (用于测试)"""
+        dynamic_id = int(searched.group("dyid"))
+        
+        from ...render import Renderer
+        from ...sender import MessageSender
+        from bilibili_api.opus import Opus
+        import traceback
+
+        try:
+            # opus_obj = Opus(int(dynamic_id), await self.login.credential)
+            parsed_result = await self.parse_dynamic(dynamic_id)
+
+            if parsed_result:
+                renderer = Renderer(self.cfg)
+                sender = MessageSender(self.cfg, renderer)
+                
+                await sender.send_proactive_msg(
+                    context=self.cfg.context,
+                    result=parsed_result,
+                    sub_groups=self.sub_groups,
+                    sub_users=self.sub_users,
+                    platforms=self.platforms,
+                    dynamic_id=str(dynamic_id),
+                    platform_botid=self.platform_botid,
+                    only_previewCard=self.only_previewCard,
+                )
+
+                return self.result(
+                    title="主动推送测试已触发",
+                    text=f"动态 {dynamic_id} 解析成功，已调用推送接口发送至目标群/人，请检查是否收到。\n（若没收到请检查日志，以及相关配置是否配置好）",
+                    contents=[]
+                )
+            else:
+                return self.result(
+                    title="测试失败",
+                    text="动态解析为空，请检查该动态是否存在",
+                    contents=[]
+                )
+
+        except Exception as e:
+            logger.error(f"手动推送测试发生异常: {traceback.format_exc()}")
+            return self.result(
+                title="测试执行异常",
+                text=str(e),
+                contents=[]
+            )
 
     async def parse_video(
         self,
@@ -209,10 +307,10 @@ class BilibiliParser(BaseParser):
         )
 
     async def parse_dynamic(self, dynamic_id: int):
-        """解析动态信息
+        """解析动态信息，含专栏等
 
         Args:
-            url (str): 动态链接
+            dynamic_id (int): 动态 id
         """
         from bilibili_api.dynamic import Dynamic
 
@@ -220,11 +318,30 @@ class BilibiliParser(BaseParser):
 
         dynamic_ = Dynamic(dynamic_id, await self.login.credential)
 
+        #动态为专栏时候的
+        if await dynamic_.is_article():
+            return await self.parse_read_with_opus(dynamic_id)
+        
         dynamic_info = convert(await dynamic_.get_info(), DynamicData).item
-        author = self.create_author(dynamic_info.name, dynamic_info.avatar)
 
-        # 下载图片
+        return await self._parse_dynamic_info(dynamic_info)
+
+    async def _parse_dynamic_info(self, dynamic_info: DynamicInfo):
+        """解析动态信息
+
+        Args:
+            dynamic_info (DynamicInfo)
+        """
+
+        #增加堆转发内容判断
+        repost = None
+        if dynamic_info.type == "DYNAMIC_TYPE_FORWARD" and dynamic_info.orig is not None:
+            repost = await self._parse_dynamic_info(dynamic_info.orig)
+
+        # 媒体内容
+        author = self.create_author(dynamic_info.name, dynamic_info.avatar)
         contents: list[MediaContent] = []
+
         for image_url in dynamic_info.image_urls:
             img_task = self.downloader.download_img(
                 image_url, headers=self.headers, proxy=self.proxy
@@ -237,6 +354,7 @@ class BilibiliParser(BaseParser):
             timestamp=dynamic_info.timestamp,
             author=author,
             contents=contents,
+            repost=repost
         )
 
     async def parse_opus(self, opus_id: int):
@@ -249,14 +367,19 @@ class BilibiliParser(BaseParser):
         return await self._parse_opus_obj(opus)
 
     async def parse_read_with_opus(self, read_id: int):
-        """解析专栏信息, 使用 Opus 接口
+        """解析动态和图文, 使用 Opus 接口
         Args:
             read_id (int): 专栏 id
         """
-        from bilibili_api.article import Article
+        # from bilibili_api.article import Article
 
-        article = Article(read_id)
-        return await self._parse_opus_obj(await article.turn_to_opus())
+        from bilibili_api.dynamic import Dynamic
+
+        # article = Article(read_id)
+        # return await self._parse_opus_obj(await article.turn_to_opus())
+
+        dynamic = Dynamic(read_id, await self.login.credential)
+        return await self._parse_opus_obj(dynamic.turn_to_opus())
 
     async def _parse_opus_obj(self, bili_opus: Opus):
         """解析图文动态信息
@@ -272,7 +395,7 @@ class BilibiliParser(BaseParser):
         # import json
         # with open("bili_debug.json", "w", encoding="utf-8") as f:
         #     json.dump(opus_info, f, ensure_ascii=False, indent=2)
-        
+
         if not isinstance(opus_info, dict):
             raise ParseException("获取图文动态信息失败")
         
@@ -298,7 +421,7 @@ class BilibiliParser(BaseParser):
 
         except Exception as e:
             logger.warning(f"扫描标题失败: {e}")
-        
+
         #判断给的opus链接是专栏还是动态
         is_article = await self._check_is_article(opus_info)
 
@@ -602,5 +725,121 @@ class BilibiliParser(BaseParser):
         logger.debug(f"音频流质量: {audio_stream.audio_quality.name}")
         return video_stream.url, audio_stream.url
 
+    async def _subscription_loop(self):
+        """进行订阅轮询
 
+        Args:
+            
 
+        Returns:
+            
+        """
+        import traceback
+        from bilibili_api import user
+
+        await asyncio.sleep(5.0) # 用float
+
+        while True:
+            try:
+                #对于三种情况，全局/仅群和个人
+                poll_queue=[]
+                for u in self.sub_uids:
+                    poll_queue.append((u, "global", self.sub_groups, self.sub_users))
+                for u in self.only_sub_group_uid:
+                    poll_queue.append((u, "group", self.sub_groups, []))
+                for u in self.only_sub_users_uid:
+                    poll_queue.append((u, "user", [], self.sub_users))
+
+                #遍历，请求。rule -> 发送全部/仅群/个人
+                for uid_str,rule,target_groups,target_users in poll_queue:
+                    if not uid_str: continue
+
+                    uid = int(str(uid_str).strip())
+                    cache_key = f"{rule}_{uid}"
+
+                    u = user.User(uid=uid, credential=await self.login.credential)
+                    try:
+                        resp = await u.get_dynamics_new()
+                    except Exception as e:
+                        logger.warning(f"获取 UP主 {uid}, 发送规则 {rule} 动态失败: {e}")
+                        await asyncio.sleep(float(self.sub_delay))
+                        continue
+
+                    items = resp.get("items", [])
+                    if not items:
+                        continue
+
+                    #寻找非顶置的最新动态
+                    for item in items:
+                        try:
+                            is_pinned = item["modules"]["module_tag"]["text"] == "置顶"
+                        except:
+                            is_pinned = False
+                        if not is_pinned:
+                            newest_item = item
+                            break
+
+                    if not newest_item:
+                        continue
+
+                    #记录id状态
+                    dynamic_id = str(newest_item["id_str"])
+                    if cache_key not in self._last_dynamic_cache:
+                        self._last_dynamic_cache[cache_key] = dynamic_id
+                        await self._save_cache()
+                        # self._last_dynamic_cache[cache_key]="FORCE_TRIGGER"
+                        logger.info(f"初始化记录 UP主 {uid} 最新动态: {dynamic_id}。发送规则 {rule}")
+                    elif self._last_dynamic_cache[cache_key] != dynamic_id:
+                        logger.info(f"检测到发现 UP 主 {uid} 动态更新，id 为: {dynamic_id}。发送规则 {rule} ")
+                        self._last_dynamic_cache[cache_key] = dynamic_id
+                        await self._save_cache()
+
+                        try:
+                            int_dynamic_id = int(dynamic_id)
+                            parsed_result = await self.parse_dynamic(int_dynamic_id)
+
+                            if parsed_result:
+                                from ...render import Renderer
+                                from ...sender import MessageSender
+
+                                renderer = Renderer(self.cfg)
+                                sender = MessageSender(self.cfg, renderer)
+
+                                if not target_groups and not target_users:
+                                    continue
+
+                                await sender.send_proactive_msg(
+                                    context=self.cfg.context,
+                                    result=parsed_result,
+                                    sub_groups=list(target_groups),
+                                    sub_users=list(target_users),
+                                    platforms=self.platforms,
+                                    dynamic_id=dynamic_id,
+                                    platform_botid=self.platform_botid,
+                                    only_previewCard=self.only_previewCard
+                                )
+                        except Exception as e:
+                                logger.error(f"解析并推送动态 {dynamic_id} 失败: {traceback.format_exc()}")
+
+                    await asyncio.sleep(float(self.sub_delay))
+
+            except Exception as e:
+                logger.error(f"动态订阅循环发生异常: {traceback.format_exc()}")
+
+            await asyncio.sleep(float(self.sub_interval) * 60.0)
+
+    async def _save_cache(self):
+        """将缓存保存到对于data本地数据目录下"""
+        import json
+        try:
+            max_entries = 100
+            while len(self._last_dynamic_cache) > max_entries:
+                oldest_key = next(iter(self._last_dynamic_cache))
+                self._last_dynamic_cache.pop(oldest_key)
+                logger.debug(f"数量达到最大 {max_entries}，移除旧纪录: {oldest_key}")
+
+            with open(self.cache_file, "w", encoding="utf-8") as f:
+                json.dump(self._last_dynamic_cache, f, ensure_ascii=False)
+
+        except Exception as e:
+            logger.error(f"保存失败: {e}")
