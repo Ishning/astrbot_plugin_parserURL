@@ -821,6 +821,8 @@ class BilibiliParser(BaseParser):
                     uid = int(str(uid_str).strip())
                     cache_key = str(uid)
 
+                    newest_item = None
+
                     u = user.User(uid=uid, credential=await self.login.credential)
                     try:
                         resp = await u.get_dynamics_new()
@@ -831,6 +833,7 @@ class BilibiliParser(BaseParser):
 
                     items = resp.get("items", [])
                     if not items:
+                        await asyncio.sleep(float(self.sub_delay))
                         continue
 
                     #寻找非顶置的最新动态
@@ -844,6 +847,7 @@ class BilibiliParser(BaseParser):
                             break
 
                     if not newest_item:
+                        await asyncio.sleep(float(self.sub_delay))
                         continue
 
                     #记录id状态
