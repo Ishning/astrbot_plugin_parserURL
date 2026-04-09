@@ -58,16 +58,71 @@ class BilibiliParser(BaseParser):
         if self.sub_enable is None:
             self.sub_enable = False
 
-        self.sub_uids = getattr(self.mycfg, "sub_uids", None) or []
         self.sub_interval = getattr(self.mycfg, "sub_interval", None) or 3
         self.sub_delay = getattr(self.mycfg, "sub_delay", None) or 5
-        self.sub_groups = getattr(self.mycfg, "sub_groups", None) or []
-        self.sub_users = getattr(self.mycfg, "sub_users", None) or []
         self.platforms = getattr(self.mycfg, "platform_name", ["default"]) or ["default"]
         self.platform_botid = getattr(self.mycfg, "platform_botid", None) or []
         self.only_previewCard = getattr(self.mycfg, "only_previewCard", None) or False
-        self.only_sub_group_uid = getattr(self.mycfg, "only_sub_group_uid", None) or []
-        self.only_sub_users_uid = getattr(self.mycfg, "only_sub_users_uid", None) or []
+
+        #获取订阅配置
+        self.sub_uids_users = getattr(self.mycfg, "sub_uids_users", None) or []
+        self.sub_map = {}
+        for item in self.sub_uids_users:
+            item_str = str(item).strip()
+            if not item_str: continue
+
+            parts = item_str.split('-')
+            uid_str = parts[0]
+
+            try:
+                uid = int(uid_str)
+            except ValueError:
+                logger.error(f" [bili订阅] 配置错误: '{item_str}' 的 UID 部分不是有效的数字")
+                continue
+
+            if len(parts) == 1:
+                logger.error(f" [bili订阅] 配置错误: UID {uid} 下该 {parts} 未指定任何群(g)或个人(u)")
+                continue
+
+            target_groups = []
+            target_users = []
+            has_error = False
+
+            for target in parts[1:]:
+                target = target.strip()
+                if not target: continue
+                
+                prefix = target[0].lower()
+                id_part = target[1:]
+                
+                if prefix == 'g':
+                    try:
+                        target_groups.append(str(int(id_part))) #验证是否为数字以防填写错误，然后再转回来
+                    except ValueError:
+                        logger.error(f" [bili订阅] UID {uid} 的群号格式错误: '{target}'")
+                        has_error = True
+                elif prefix == 'u':
+                    try:
+                        target_users.append(str(int(id_part)))
+                    except ValueError:
+                        logger.error(f" [bili订阅] UID {uid} 的个人号格式错误: '{target}'")
+                        has_error = True
+                else:
+                    logger.error(f" [bili订阅] 配置非法: UID {uid} 中的 '{target}' 未以群(g)或个人(u)开头")
+                    has_error = True
+
+            if not has_error and (target_groups or target_users):
+                if uid not in self.sub_map:
+                    self.sub_map[uid] = {
+                        "groups": [],
+                        "users": []
+                    }
+                # 追加同时去重，乙方出现填写重复
+                self.sub_map[uid]["groups"].extend(target_groups)
+                self.sub_map[uid]["groups"] = list(set(self.sub_map[uid]["groups"]))
+
+                self.sub_map[uid]["users"].extend(target_users)
+                self.sub_map[uid]["users"] = list(set(self.sub_map[uid]["users"]))
 
         #初始化状态缓存
         self._last_dynamic_cache = {}
@@ -85,10 +140,9 @@ class BilibiliParser(BaseParser):
                 logger.error(f"加载失败: {e}")
 
         #如果开启了订阅且有配置 UID，启动后台轮询任务
-        if self.sub_enable and (self.sub_uids or self.only_sub_group_uid or self.only_sub_users_uid):
+        if self.sub_enable and self.sub_map:
             logger.info(
-                f"启动 B 站动态订阅: [全局] {len(self.sub_uids)}个, "
-                f"[仅群] {len(self.only_sub_group_uid)}个, [仅私聊] {len(self.only_sub_users_uid)}个。"
+                f"启动 B 站动态订阅，加载 {len(self.sub_map)}个"
             )
             self._polling_task = asyncio.create_task(self._subscription_loop())
 
@@ -187,6 +241,21 @@ class BilibiliParser(BaseParser):
 
         try:
             # opus_obj = Opus(int(dynamic_id), await self.login.credential)
+
+            test_groups = set()
+            test_users = set()
+
+            for targets in self.sub_map.values():
+                test_groups.update(targets["groups"])
+                test_users.update(targets["users"])
+
+            if not test_groups and not test_users:
+                return self.result(
+                    title="测试中断",
+                    text="未在配置中检测到任何有效的推送目标（群或个人）。请先在设置中配置 sub_uids_users。",
+                    contents=[]
+                )
+
             parsed_result = await self.parse_dynamic(dynamic_id)
 
             if parsed_result:
@@ -196,8 +265,8 @@ class BilibiliParser(BaseParser):
                 await sender.send_proactive_msg(
                     context=self.cfg.context,
                     result=parsed_result,
-                    sub_groups=self.sub_groups,
-                    sub_users=self.sub_users,
+                    sub_groups=list(test_groups),
+                    sub_users=list(test_users),
                     platforms=self.platforms,
                     dynamic_id=str(dynamic_id),
                     platform_botid=self.platform_botid,
@@ -741,32 +810,30 @@ class BilibiliParser(BaseParser):
 
         while True:
             try:
-                #对于三种情况，全局/仅群和个人
                 poll_queue=[]
-                for u in self.sub_uids:
-                    poll_queue.append((u, "global", self.sub_groups, self.sub_users))
-                for u in self.only_sub_group_uid:
-                    poll_queue.append((u, "group", self.sub_groups, []))
-                for u in self.only_sub_users_uid:
-                    poll_queue.append((u, "user", [], self.sub_users))
+                for uid, targets in self.sub_map.items():
+                    poll_queue.append((str(uid), targets["groups"], targets["users"]))
 
-                #遍历，请求。rule -> 发送全部/仅群/个人
-                for uid_str,rule,target_groups,target_users in poll_queue:
+                #遍历，请求。rule -> 根据 targets 发送到具体的群或人
+                for uid_str, target_groups, target_users in poll_queue:
                     if not uid_str: continue
 
                     uid = int(str(uid_str).strip())
-                    cache_key = f"{rule}_{uid}"
+                    cache_key = str(uid)
+
+                    newest_item = None
 
                     u = user.User(uid=uid, credential=await self.login.credential)
                     try:
                         resp = await u.get_dynamics_new()
                     except Exception as e:
-                        logger.warning(f"获取 UP主 {uid}, 发送规则 {rule} 动态失败: {e}")
+                        logger.warning(f"获取 UP主 {uid}, 动态失败: {e}")
                         await asyncio.sleep(float(self.sub_delay))
                         continue
 
                     items = resp.get("items", [])
                     if not items:
+                        await asyncio.sleep(float(self.sub_delay))
                         continue
 
                     #寻找非顶置的最新动态
@@ -780,6 +847,7 @@ class BilibiliParser(BaseParser):
                             break
 
                     if not newest_item:
+                        await asyncio.sleep(float(self.sub_delay))
                         continue
 
                     #记录id状态
@@ -788,9 +856,9 @@ class BilibiliParser(BaseParser):
                         self._last_dynamic_cache[cache_key] = dynamic_id
                         await self._save_cache()
                         # self._last_dynamic_cache[cache_key]="FORCE_TRIGGER"
-                        logger.info(f"初始化记录 UP主 {uid} 最新动态: {dynamic_id}。发送规则 {rule}")
+                        logger.info(f"初始化记录 UP主 {uid} 最新动态: {dynamic_id}")
                     elif self._last_dynamic_cache[cache_key] != dynamic_id:
-                        logger.info(f"检测到发现 UP 主 {uid} 动态更新，id 为: {dynamic_id}。发送规则 {rule} ")
+                        logger.info(f"检测到发现 UP 主 {uid} 动态更新，id 为: {dynamic_id}")
                         self._last_dynamic_cache[cache_key] = dynamic_id
                         await self._save_cache()
 
