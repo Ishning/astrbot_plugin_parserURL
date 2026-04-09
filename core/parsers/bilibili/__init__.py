@@ -135,16 +135,27 @@ class BilibiliParser(BaseParser):
             try:
                 with open(self.cache_file, "r", encoding="utf-8") as f:
                     self._last_dynamic_cache = json.load(f)
-                logger.info(f"已加载状态缓存，目前记录数为: {len(self._last_dynamic_cache)}")
+                logger.info(f"[bili_订阅] 已加载状态缓存，目前记录数为: {len(self._last_dynamic_cache)}")
             except Exception as e:
-                logger.error(f"加载失败: {e}")
+                logger.error(f"[bili_订阅] 加载失败: {e}")
+
+        #解决热重载导致的僵尸任务
+        f_old_task=False
+        for task in asyncio.all_tasks():
+            if task.get_name()=="task_bili_subscription_loop":
+                task.cancel()
+                f_old_task = True
+        if f_old_task:
+            logger.info("[bili_订阅] 热重载，已清理旧 task_bili_subscription_loop 任务")
 
         #如果开启了订阅且有配置 UID，启动后台轮询任务
         if self.sub_enable and self.sub_map:
             logger.info(
                 f"启动 B 站动态订阅，加载 {len(self.sub_map)}个"
             )
-            self._polling_task = asyncio.create_task(self._subscription_loop())
+            self._polling_task = asyncio.create_task(
+                self._subscription_loop(),
+                name="task_bili_subscription_loop")
 
     @handle("b23.tv", r"b23\.tv/[A-Za-z\d\._?%&+\-=/#]+")
     @handle("bili2233", r"bili2233\.cn/[A-Za-z\d\._?%&+\-=/#]+")
