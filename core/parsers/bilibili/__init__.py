@@ -827,7 +827,7 @@ class BilibiliParser(BaseParser):
                     try:
                         resp = await u.get_dynamics_new()
                     except Exception as e:
-                        logger.warning(f"获取 UP主 {uid}, 动态失败: {e}")
+                        logger.warning(f"[bili_订阅] 获取 UP主 {uid}, 动态失败: {e}")
                         await asyncio.sleep(float(self.sub_delay))
                         continue
 
@@ -856,9 +856,9 @@ class BilibiliParser(BaseParser):
                         self._last_dynamic_cache[cache_key] = dynamic_id
                         await self._save_cache()
                         # self._last_dynamic_cache[cache_key]="FORCE_TRIGGER"
-                        logger.info(f"初始化记录 UP主 {uid} 最新动态: {dynamic_id}")
+                        logger.info(f"[bili_订阅] 初始化记录 UP主 {uid} 最新动态: {dynamic_id}")
                     elif self._last_dynamic_cache[cache_key] != dynamic_id:
-                        logger.info(f"检测到发现 UP 主 {uid} 动态更新，id 为: {dynamic_id}")
+                        logger.info(f"[bili_订阅] 检测到发现 UP 主 {uid} 动态更新，id 为: {dynamic_id}")
                         self._last_dynamic_cache[cache_key] = dynamic_id
                         await self._save_cache()
 
@@ -887,12 +887,12 @@ class BilibiliParser(BaseParser):
                                     only_previewCard=self.only_previewCard
                                 )
                         except Exception as e:
-                                logger.error(f"解析并推送动态 {dynamic_id} 失败: {traceback.format_exc()}")
+                                logger.error(f"[bili_订阅] 解析并推送动态 {dynamic_id} 失败: {traceback.format_exc()}")
 
                     await asyncio.sleep(float(self.sub_delay))
 
             except Exception as e:
-                logger.error(f"动态订阅循环发生异常: {traceback.format_exc()}")
+                logger.error(f"[bili_订阅] 动态订阅循环发生异常: {traceback.format_exc()}")
 
             await asyncio.sleep(float(self.sub_interval) * 60.0)
 

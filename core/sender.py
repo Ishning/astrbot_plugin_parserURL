@@ -419,7 +419,7 @@ class MessageSender:
         info_segs = list(preview_segs)
         if dynamic_id:
             dynamic_url = f"https://t.bilibili.com/{dynamic_id}"
-            info_segs.append(Plain(f"🔗链接： {dynamic_url}"))
+            info_segs.append(Plain(f"链接： {dynamic_url}"))
 
         info_chain = MessageChain(info_segs) if info_segs else None
 
