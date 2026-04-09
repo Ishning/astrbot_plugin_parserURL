@@ -63,6 +63,7 @@ class BilibiliParser(BaseParser):
         self.platforms = getattr(self.mycfg, "platform_name", ["default"]) or ["default"]
         self.platform_botid = getattr(self.mycfg, "platform_botid", None) or []
         self.only_previewCard = getattr(self.mycfg, "only_previewCard", None) or False
+        self.ignore_lottery = getattr(self.mycfg, "ignore_lottery", None) or False
 
         #获取订阅配置
         self.sub_uids_users = getattr(self.mycfg, "sub_uids_users", None) or []
@@ -878,6 +879,12 @@ class BilibiliParser(BaseParser):
                             parsed_result = await self.parse_dynamic(int_dynamic_id)
 
                             if parsed_result:
+                                if self.ignore_lottery:
+                                    _result_text=f'{parsed_result.text}'
+                                    if await self._is_lottery(_result_text):
+                                        logger.info(f" [bili订阅] 动态 {dynamic_id} 确认为抽奖动态将过滤不推送")
+                                        continue
+
                                 from ...render import Renderer
                                 from ...sender import MessageSender
 
@@ -922,3 +929,17 @@ class BilibiliParser(BaseParser):
 
         except Exception as e:
             logger.error(f"保存失败: {e}")
+
+    async def _is_lottery(self, text: str) -> bool:
+        """判断文本是否包含了抽奖相关动态"""
+        if not text:
+            return False
+
+        keywords = ["恭喜", "中奖", "私信", "奖品", "抽奖"]
+        hits = sum(1 for k in keywords if k in text)
+
+        if hits >= 3:
+            return True
+
+        return False
+    

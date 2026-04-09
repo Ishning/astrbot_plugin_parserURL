@@ -178,6 +178,12 @@
                         "type": "bool",
                         "default": false
                     },
+                    "ignore_lottery":{
+                        "description": "订阅动态发送内容忽略中奖的动态",
+                        "hint": "开启后遇到动态转发内容为抽奖的结果将不再发送，能过滤掉大部分可能会有小部分遗漏",
+                        "type": "bool",
+                        "default": false
+                    },
                     "sub_interval": {
                         "description": "轮询间隔 (分钟)",
                         "hint": "定时检查新动态的间隔时间",

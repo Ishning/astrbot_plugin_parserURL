@@ -166,6 +166,7 @@ class ParserItem(ConfigNode):
     platform_botid: list[str] | None
     sub_uids_users: list[str] | None
     only_previewCard: bool | None
+    ignore_lottery: bool | None
 
     @property
     def name(self) -> str:
