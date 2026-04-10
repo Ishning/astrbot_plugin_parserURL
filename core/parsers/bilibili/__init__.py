@@ -865,7 +865,9 @@ class BilibiliParser(BaseParser):
                             is_pinned = item["modules"]["module_tag"]["text"] == "置顶"
                         except:
                             is_pinned = False
-                        if not is_pinned:
+                        #同时去除type 为直播 DYNAMIC_TYPE_LIVE_RCMD 类型的动态
+                        dyn_type = item.get("type", "")
+                        if not is_pinned and dyn_type != "DYNAMIC_TYPE_LIVE_RCMD":
                             recent_items.append(item)
                             if len(recent_items) >= 5:
                                 break
