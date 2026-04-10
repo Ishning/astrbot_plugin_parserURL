@@ -848,64 +848,109 @@ class BilibiliParser(BaseParser):
                         await asyncio.sleep(float(self.sub_delay))
                         continue
 
+                    #重新调整逻辑
+                    is_first_init = False
+                    if cache_key not in self._last_dynamic_cache:
+                        self._last_dynamic_cache[cache_key] = {}
+                        is_first_init = True
+                    elif isinstance(self._last_dynamic_cache[cache_key], str):
+                        self._last_dynamic_cache[cache_key] = {self._last_dynamic_cache[cache_key]: "sent"}
+
+                    uid_cache = self._last_dynamic_cache[cache_key]
+
                     #寻找非顶置的最新动态
+                    recent_items = []
                     for item in items:
                         try:
                             is_pinned = item["modules"]["module_tag"]["text"] == "置顶"
                         except:
                             is_pinned = False
                         if not is_pinned:
-                            newest_item = item
-                            break
+                            recent_items.append(item)
+                            if len(recent_items) >= 5:
+                                break
 
-                    if not newest_item:
-                        await asyncio.sleep(float(self.sub_delay))
-                        continue
+                    #让旧的在前面倒叙发送
+                    recent_items.reverse()
 
-                    #记录id状态
-                    dynamic_id = str(newest_item["id_str"])
-                    if cache_key not in self._last_dynamic_cache:
-                        self._last_dynamic_cache[cache_key] = dynamic_id
-                        await self._save_cache()
-                        # self._last_dynamic_cache[cache_key]="FORCE_TRIGGER"
-                        logger.info(f"[bili_订阅] 初始化记录 UP主 {uid} 最新动态: {dynamic_id}")
-                    elif self._last_dynamic_cache[cache_key] != dynamic_id:
-                        logger.info(f"[bili_订阅] 检测到发现 UP 主 {uid} 动态更新，id 为: {dynamic_id}")
-                        self._last_dynamic_cache[cache_key] = dynamic_id
-                        await self._save_cache()
+                    for newest_item in recent_items:
+                        # 获取当前的，设置 new状态
+                        dynamic_id = str(newest_item["id_str"])
+                        status = uid_cache.get(dynamic_id, "new")
+                        
+                        # 发送，忽略两种跳过
+                        if status == "sent" or status == "skip":
+                            continue
+
+                        #第一次使用默认都当发送过
+                        if is_first_init:
+                            uid_cache[dynamic_id] = "sent"
+                            await self._save_cache()
+                            continue
 
                         try:
                             int_dynamic_id = int(dynamic_id)
                             parsed_result = await self.parse_dynamic(int_dynamic_id)
 
                             if parsed_result:
-                                if self.ignore_lottery:
-                                    _result_text=f'{parsed_result.text}'
+                                # 抽奖过滤
+                                if getattr(self, "ignore_lottery", False):
+                                    _result_text = f"{parsed_result.header or ''} {parsed_result.text or ''}"
                                     if await self._is_lottery(_result_text):
-                                        logger.info(f" [bili订阅] 动态 {dynamic_id} 确认为抽奖动态将过滤不推送")
+                                        logger.info(f"[bili订阅] 动态 {dynamic_id} 确认为抽奖动态将过滤不推送")
+                                        uid_cache[dynamic_id] = "skip"
+                                        await self._save_cache()
                                         continue
 
                                 from ...render import Renderer
                                 from ...sender import MessageSender
-
                                 renderer = Renderer(self.cfg)
                                 sender = MessageSender(self.cfg, renderer)
 
-                                if not target_groups and not target_users:
-                                    continue
+                                if target_groups or target_users:
+                                    await sender.send_proactive_msg(
+                                        context=self.cfg.context,
+                                        result=parsed_result,
+                                        sub_groups=list(target_groups),
+                                        sub_users=list(target_users),
+                                        platforms=self.platforms,
+                                        dynamic_id=dynamic_id,
+                                        platform_botid=self.platform_botid,
+                                        only_previewCard=self.only_previewCard
+                                    )
+                                uid_cache[dynamic_id] = "sent"
 
-                                await sender.send_proactive_msg(
-                                    context=self.cfg.context,
-                                    result=parsed_result,
-                                    sub_groups=list(target_groups),
-                                    sub_users=list(target_users),
-                                    platforms=self.platforms,
-                                    dynamic_id=dynamic_id,
-                                    platform_botid=self.platform_botid,
-                                    only_previewCard=self.only_previewCard
-                                )
                         except Exception as e:
-                                logger.error(f"[bili_订阅] 解析并推送动态 {dynamic_id} 失败: {traceback.format_exc()}")
+                            #失败重试
+                            max_retries = 3
+
+                            if status == "new":
+                                current_fail_count = 0
+                            elif status.startswith("fail_"):
+                                try:
+                                    current_fail_count = int(status.split("_")[1])
+                                except (ValueError, IndexError):
+                                    current_fail_count = 0
+                            else:
+                                current_fail_count = 0
+
+                            current_fail_count += 1
+
+                            if current_fail_count >= max_retries:
+                                uid_cache[dynamic_id] = "sent"
+                                logger.error(f"[bili_订阅] 动态 {dynamic_id} 连续失败 {max_retries} 次，放弃发送")
+                            else:
+                                uid_cache[dynamic_id] = f"fail_{current_fail_count}"
+                                logger.warning(f"[bili_订阅] 动态 {dynamic_id} 第 {current_fail_count} 次处理失败: {e}")
+
+                        await self._save_cache()
+                        await asyncio.sleep(1.0)
+
+                    if len(uid_cache) > 10:
+                        keys = list(uid_cache.keys())
+                        for k in keys[:-10]:
+                            uid_cache.pop(k, None)
+                        await self._save_cache()
 
                     await asyncio.sleep(float(self.sub_delay))
 
