@@ -972,7 +972,7 @@ class BilibiliParser(BaseParser):
                 logger.debug(f"数量达到最大 {max_entries}，移除旧纪录: {oldest_key}")
 
             with open(self.cache_file, "w", encoding="utf-8") as f:
-                json.dump(self._last_dynamic_cache, f, ensure_ascii=False)
+                json.dump(self._last_dynamic_cache, f, ensure_ascii=False, indent=4)
 
         except Exception as e:
             logger.error(f"保存失败: {e}")
