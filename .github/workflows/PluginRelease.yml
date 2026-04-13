@@ -27,7 +27,7 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add metadata.yaml
-          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: bump version to ${{ github.ref_name }}" && git push origin master)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: bump version to ${{ github.ref_name }}" && git push origin HEAD:master)
 
       - name: Extract Latest Changelog Section
         id: changelog_reader
