@@ -1,6 +1,6 @@
 name: astrbot_plugin_parserurl
 display_name: 社交媒体链接自动解析插件
-desc: 社交媒体分享链接解析插件。支持的类型：视频、图集、音频。 支持的平台：A站、B站、抖音、tiktok、微博、小红书、快手、油管、X...
+desc: 社交媒体分享链接解析插件。将A站、B站、抖音、小红书、微博...等网站的视频、图集、音频进行解析并发送
 help: 略
 version: v1.6.0
 author: Ishning
