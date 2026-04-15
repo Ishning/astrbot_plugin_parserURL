@@ -221,3 +221,147 @@ class ParserPlugin(Star):
         yield event.chain_result([Image.fromBytes(qrcode)])
         async for msg in parser.login.check_qr_state():
             yield event.plain_result(msg)
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("订阅up")
+    async def subscribe_bili_up(self, event: AstrMessageEvent, uid_str: str = ""):
+        """添加B站up主动态订阅"""
+        try:
+            if not uid_str or not uid_str.isdigit():
+                yield event.plain_result("UID 不能为空且为数字\n示例：订阅up 114514")
+                return
+
+            uid = int(uid_str)
+            parser: BilibiliParser = self._get_parser_by_type(BilibiliParser)  # type: ignore
+
+            is_group = False
+            target_id = ""
+
+            if isinstance(event, AiocqhttpMessageEvent) and not event.is_private_chat():
+                is_group = True
+                raw = event.message_obj.raw_message
+
+                if isinstance(raw, dict):
+                    target_id = str(raw.get("group_id", ""))
+                else:
+                    target_id = str(getattr(event.message_obj, "group_id", ""))
+
+                if not target_id:
+                    yield event.plain_result("获取群号失败")
+                    return
+            else:
+                target_id = str(event.get_sender_id())
+
+            target_type = "groups" if is_group else "users"
+
+            # 更新内存 sub_map
+            if uid not in parser.sub_map:
+                parser.sub_map[uid] = {"groups": [], "users": []}
+
+            if target_id in parser.sub_map[uid][target_type]:
+                yield event.plain_result(f"当前通过{'群' if is_group else '私聊'}订阅的 UP主 {uid} 已被订阅")
+                return
+
+            parser.sub_map[uid][target_type].append(target_id)
+
+            await self.save_to_plugin_config()
+            yield event.plain_result(f"成功订阅 UP主：{uid}")
+
+        except Exception as e:
+            import traceback
+            logger.error(f"[bili_订阅] 添加订阅失败: {traceback.format_exc()}")
+            yield event.plain_result(f"错误: {e}")
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("取消订阅up")
+    async def unsubscribe_bili_up(self, event: AstrMessageEvent, uid_str: str = ""):
+        """取消B站UP主订阅动态推送"""
+        try:
+            if not uid_str or not uid_str.isdigit():
+                yield event.plain_result("UID 不能为空且为数字\n示例：取消订阅up 114514")
+                return
+
+            uid = int(uid_str)
+            parser: BilibiliParser = self._get_parser_by_type(BilibiliParser)   # type: ignore
+
+            is_group = False
+            target_id = ""
+
+            if isinstance(event, AiocqhttpMessageEvent) and not event.is_private_chat():
+                is_group = True
+                raw = event.message_obj.raw_message
+                if isinstance(raw, dict):
+                    target_id = str(raw.get("group_id", ""))
+                else:
+                    target_id = str(getattr(event.message_obj, "group_id", ""))
+            else:
+                target_id = str(event.get_sender_id())
+
+            target_type = "groups" if is_group else "users"
+
+            #检测是否存在
+            if uid not in parser.sub_map or target_id not in parser.sub_map[uid][target_type]:
+                yield event.plain_result(f"当前{'群' if is_group else '私聊'}并没有订阅 UP主 {uid}")
+                return
+
+            #仅移除针对会话发起的群或个人私聊
+            parser.sub_map[uid][target_type].remove(target_id)
+
+            if not parser.sub_map[uid]["groups"] and not parser.sub_map[uid]["users"]:
+                parser.sub_map.pop(uid, None)
+                logger.info(f"[bili_订阅] UID {uid} 无任何订阅者从内存移除")
+
+            await self.save_to_plugin_config()
+            yield event.plain_result(f"成功取消订阅 UP主：{uid}")
+
+        except Exception as e:
+            import traceback
+            logger.error(f"[bili_订阅] 取消订阅失败: {traceback.format_exc()}")
+            yield event.plain_result(f"错误: {e}")
+
+    async def save_to_plugin_config(self):
+        """将 sub_map 写入到 AstrBot 插件的配置文件对应位置"""
+        import json
+        import os
+
+        #找到配置，self.name 获取名字变小写了，先用写死的硬编码了
+        plugin_name = "astrbot_plugin_parserURL_config"
+        config_path = f"data/config/{plugin_name}.json"
+
+        try:
+            #读写配置文件，看用的是 utf-8-sig 格式保持统一
+            if os.path.exists(config_path):
+                with open(config_path, "r", encoding="utf-8-sig") as f:
+                    current_config = json.load(f)
+            else:
+                current_config = {"parsers_template": []}
+
+            parser: BilibiliParser = self._get_parser_by_type(BilibiliParser)   # type: ignore
+            formatted_list = []
+
+            for uid, targets in parser.sub_map.items():
+                parts = [str(uid)]
+                parts.extend([f"g{g_id}" for g_id in targets.get("groups", [])])
+                parts.extend([f"u{u_id}" for u_id in targets.get("users", [])])
+                formatted_list.append("-".join(parts))
+
+            parsers_template = current_config.get("parsers_template", [])
+            target_node = next((t for t in parsers_template if t.get("__template_key") == "bilibili"), None)
+
+            if target_node:
+                target_node["sub_uids_users"] = formatted_list
+            else:
+                parsers_template.append({
+                    "__template_key": "bilibili",
+                    "sub_uids_users": formatted_list
+                })
+                current_config["parsers_template"] = parsers_template
+
+            with open(config_path, "w", encoding="utf-8-sig") as f:
+                json.dump(current_config, f, ensure_ascii=False, indent=2)
+
+            logger.info(f"[bili_订阅] 配置写入成功，先有 {len(formatted_list)} 条订阅记录。")
+
+        except Exception as e:
+            logger.error(f"[bili_订阅] 写入该插件的配置文件失败: {e}")
+            raise e
