@@ -65,6 +65,8 @@ class BilibiliParser(BaseParser):
         self.only_previewCard = getattr(self.mycfg, "only_previewCard", None) or False
         self.ignore_lottery = getattr(self.mycfg, "ignore_lottery", None) or False
 
+        self.uid_name_cache = {}
+
         #获取订阅配置
         self.sub_uids_users = getattr(self.mycfg, "sub_uids_users", None) or []
         self.sub_map = {}
@@ -157,6 +159,21 @@ class BilibiliParser(BaseParser):
             self._polling_task = asyncio.create_task(
                 self._subscription_loop(),
                 name="task_bili_subscription_loop")
+
+        #任务 _warm_up_cache_loop
+        f_old_warmup = False
+        for task in asyncio.all_tasks():
+            if task.get_name() == "task_bili_warm_up_cache_loop":
+                task.cancel()
+                f_old_warmup = True
+        if f_old_warmup:
+            logger.info("[bili_订阅] 热重载，已清理旧 task_bili_warm_up_cache_loop 任务")
+
+        if self.sub_enable:
+            self._warmup_task = asyncio.create_task(
+                self._warm_up_cache_loop(),
+                name="task_bili_warm_up_cache_loop"
+            )
 
     @handle("b23.tv", r"b23\.tv/[A-Za-z\d\._?%&+\-=/#]+")
     @handle("bili2233", r"bili2233\.cn/[A-Za-z\d\._?%&+\-=/#]+")
@@ -304,6 +321,70 @@ class BilibiliParser(BaseParser):
                 text=str(e),
                 contents=[]
             )
+
+    async def _warm_up_cache_loop(self):
+        """用于每30min执行一次 warm_up_cache 函数来检查是否有新uid进来，有的话进行处理"""
+        while True:
+            try:
+                await self.warm_up_cache()
+            except Exception as e:
+                logger.error(f"[bili_订阅] 预加载循环发生异常: {e}")
+            #30min
+            await asyncio.sleep(1800)
+
+    async def warm_up_cache(self):
+        """用于预加载 get_up_info 函数进行的内容"""
+        import asyncio
+        if not self.sub_map:
+            return
+
+        logger.info(f"[bili_订阅] 预载加载 {len(self.sub_map)} 个 UP 主的名字缓存")
+
+        for uid in list(self.sub_map.keys()):
+            if uid in self.uid_name_cache:
+                continue
+
+            try:
+                await self.get_up_info(uid)
+
+            except Exception as e:
+                err_msg = str(e)
+                #处理风控
+                if "-352" in err_msg or "风控" in err_msg:
+                    logger.warning(f"[bili_订阅] 触发错误 -352，风控校验失败。1分钟后再尝试")
+                    await asyncio.sleep(60)
+                else:
+                    logger.warning(f"预加载 UID {uid} 失败: {err_msg}")
+                continue
+
+        logger.info("[bili_订阅] 预载加载完成")
+
+    async def get_up_info(self, uid: int) -> str:
+        """用户解析获取uid的名字等信息"""
+        from bilibili_api import user
+        import asyncio
+
+        if uid in self.uid_name_cache:
+            return self.uid_name_cache[uid]
+
+        try:
+            await asyncio.sleep(1)
+
+            u = user.User(uid=uid, credential=await self.login.credential)
+            user_info = await u.get_user_info()
+
+            name = user_info.get("name", f"该{uid}未查询到up主名字")
+
+            self.uid_name_cache[uid] = name
+            return name
+        except Exception as e:
+            err_msg = str(e)
+            logger.warning(f"获取 UID {uid} up主名字失败: {err_msg}")
+            #处理风控向上走到 warm_up_cache 处理
+            if "-352" in err_msg or "风控" in err_msg:
+                raise e
+
+            return f"未知UP主"
 
     async def parse_video(
         self,

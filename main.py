@@ -254,18 +254,20 @@ class ParserPlugin(Star):
 
             target_type = "groups" if is_group else "users"
 
+            up_name = await parser.get_up_info(uid=uid)
+
             # 更新内存 sub_map
             if uid not in parser.sub_map:
                 parser.sub_map[uid] = {"groups": [], "users": []}
 
             if target_id in parser.sub_map[uid][target_type]:
-                yield event.plain_result(f"当前通过{'群' if is_group else '私聊'}订阅的 UP主 {uid} 已被订阅")
+                yield event.plain_result(f"当前通过{'群' if is_group else '私聊'}订阅的UP主：{up_name}，uid：{uid} 已被订阅")
                 return
 
             parser.sub_map[uid][target_type].append(target_id)
 
             await self.save_to_plugin_config()
-            yield event.plain_result(f"成功订阅 UP主：{uid}")
+            yield event.plain_result(f"成功订阅 UP主：{up_name}，uid：{uid}")
 
         except Exception as e:
             import traceback
@@ -299,9 +301,11 @@ class ParserPlugin(Star):
 
             target_type = "groups" if is_group else "users"
 
+            up_name = await parser.get_up_info(uid=uid)
+
             #检测是否存在
             if uid not in parser.sub_map or target_id not in parser.sub_map[uid][target_type]:
-                yield event.plain_result(f"当前{'群' if is_group else '私聊'}并没有订阅 UP主 {uid}")
+                yield event.plain_result(f"当前{'群' if is_group else '私聊'}并没有订阅 UP主：{up_name}，uid：{uid}")
                 return
 
             #仅移除针对会话发起的群或个人私聊
@@ -312,12 +316,67 @@ class ParserPlugin(Star):
                 logger.info(f"[bili_订阅] UID {uid} 无任何订阅者从内存移除")
 
             await self.save_to_plugin_config()
-            yield event.plain_result(f"成功取消订阅 UP主：{uid}")
+            yield event.plain_result(f"成功取消订阅 UP主：{up_name}，uid：{uid}")
 
         except Exception as e:
             import traceback
             logger.error(f"[bili_订阅] 取消订阅失败: {traceback.format_exc()}")
             yield event.plain_result(f"错误: {e}")
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("查询订阅up列表")
+    async def check_subscribe_bili_up(self, event: AstrMessageEvent):
+        """查询订阅列表，仅基础信息"""
+        try:
+            parser: BilibiliParser = self._get_parser_by_type(BilibiliParser)   # type: ignore
+
+            if not parser.sub_map:
+                yield event.plain_result("当前没有任何B站 up订阅记录")
+                return
+
+            msg_lines = ["B站up订阅列表"]
+            for uid in parser.sub_map.keys():
+                up_name = parser.uid_name_cache.get(uid, f"[名字正在查询中，稍后再查询]")
+                msg_lines.append(f"up名：{up_name}，uid：{uid}，地址：https://space.bilibili.com/{uid}")
+
+            yield event.plain_result("\n".join(msg_lines))
+
+        except Exception as e:
+            import traceback
+            logger.error(f"[bili_订阅] 查询订阅失败: {traceback.format_exc()}")
+            yield event.plain_result(f"查询错误: {e}")
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("查询订阅up列表详细")
+    async def check_subscribe_bili_up_all(self, event: AstrMessageEvent):
+        """查询订阅列表，详细信息带上了发送至哪些人和群"""
+        try:
+            parser: BilibiliParser = self._get_parser_by_type(BilibiliParser)   # type: ignore
+
+            if not parser.sub_map:
+                yield event.plain_result("当前没有任何B站 up订阅记录")
+                return
+
+            msg_lines = ["B站up订阅详细列表"]
+            for uid, targets in parser.sub_map.items():
+                groups = targets.get("groups", [])
+                users = targets.get("users", [])
+
+                up_name = parser.uid_name_cache.get(uid, f"[名字正在查询中，稍后再查询]")
+
+                group_str = "、".join(groups) if groups else "无"
+                user_str = "、".join(users) if users else "无"
+
+                msg_lines.append(
+                    f"up名：{up_name}，uid：{uid}，地址：https://space.bilibili.com/{uid}， 发送至 群：{group_str}，个人：{user_str}"
+                )
+
+            yield event.plain_result("\n".join(msg_lines))
+
+        except Exception as e:
+            import traceback
+            logger.error(f"[bili_订阅] 查询详细订阅失败: {traceback.format_exc()}")
+            yield event.plain_result(f"查询错误: {e}")
 
     async def save_to_plugin_config(self):
         """将 sub_map 写入到 AstrBot 插件的配置文件对应位置"""
