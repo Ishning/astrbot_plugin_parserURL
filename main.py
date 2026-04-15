@@ -336,7 +336,7 @@ class ParserPlugin(Star):
 
             msg_lines = ["B站up订阅列表"]
             for uid in parser.sub_map.keys():
-                up_name = parser.uid_name_cache.get(uid, f"[查询量过大可能触发风控，稍后再查询]")
+                up_name = parser.uid_name_cache.get(uid, f"[查询量过快可能触发风控，稍后再查询]")
                 msg_lines.append(f"up名：{up_name}，uid：{uid}，地址：https://space.bilibili.com/{uid}")
 
             yield event.plain_result("\n".join(msg_lines))
@@ -362,7 +362,7 @@ class ParserPlugin(Star):
                 groups = targets.get("groups", [])
                 users = targets.get("users", [])
 
-                up_name = parser.uid_name_cache.get(uid, f"[查询量过大可能触发风控，稍后再查询]")
+                up_name = parser.uid_name_cache.get(uid, f"[查询量过快可能触发风控，稍后再查询]")
 
                 group_str = "、".join(groups) if groups else "无"
                 user_str = "、".join(users) if users else "无"
