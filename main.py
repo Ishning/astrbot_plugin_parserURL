@@ -44,6 +44,8 @@ class ParserPlugin(Star):
         self.parser_map: dict[str, BaseParser] = {}
         # 关键词 -> 正则 列表
         self.key_pattern_list: list[tuple[str, re.Pattern[str]]] = []
+        # config目录的下的配置json读写锁
+        self._plugin_config_lock = asyncio.Lock()
 
 
     async def initialize(self):
@@ -383,44 +385,46 @@ class ParserPlugin(Star):
         import json
         import os
 
-        #找到配置，self.name 获取名字变小写了，先用写死的硬编码了
-        plugin_name = "astrbot_plugin_parserURL_config"
-        config_path = f"data/config/{plugin_name}.json"
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        plugin_name = os.path.basename(current_dir)
+        config_path = f"data/config/{plugin_name}_config.json"
 
-        try:
-            #读写配置文件，看用的是 utf-8-sig 格式保持统一
-            if os.path.exists(config_path):
-                with open(config_path, "r", encoding="utf-8-sig") as f:
-                    current_config = json.load(f)
-            else:
-                current_config = {"parsers_template": []}
+        #增加一层 asyncio.Lock 异步锁保护
+        #读写配置文件，看框架用的是 utf-8-sig 格式保持统一
+        async with self._plugin_config_lock:
+            try:
+                if os.path.exists(config_path):
+                    with open(config_path, "r", encoding="utf-8-sig") as f:
+                        current_config = json.load(f)
+                else:
+                    current_config = {"parsers_template": []}
 
-            parser: BilibiliParser = self._get_parser_by_type(BilibiliParser)   # type: ignore
-            formatted_list = []
+                parser: BilibiliParser = self._get_parser_by_type(BilibiliParser)   # type: ignore
+                formatted_list = []
 
-            for uid, targets in parser.sub_map.items():
-                parts = [str(uid)]
-                parts.extend([f"g{g_id}" for g_id in targets.get("groups", [])])
-                parts.extend([f"u{u_id}" for u_id in targets.get("users", [])])
-                formatted_list.append("-".join(parts))
+                for uid, targets in parser.sub_map.items():
+                    parts = [str(uid)]
+                    parts.extend([f"g{g_id}" for g_id in targets.get("groups", [])])
+                    parts.extend([f"u{u_id}" for u_id in targets.get("users", [])])
+                    formatted_list.append("-".join(parts))
 
-            parsers_template = current_config.get("parsers_template", [])
-            target_node = next((t for t in parsers_template if t.get("__template_key") == "bilibili"), None)
+                parsers_template = current_config.get("parsers_template", [])
+                target_node = next((t for t in parsers_template if t.get("__template_key") == "bilibili"), None)
 
-            if target_node:
-                target_node["sub_uids_users"] = formatted_list
-            else:
-                parsers_template.append({
-                    "__template_key": "bilibili",
-                    "sub_uids_users": formatted_list
-                })
-                current_config["parsers_template"] = parsers_template
+                if target_node:
+                    target_node["sub_uids_users"] = formatted_list
+                else:
+                    parsers_template.append({
+                        "__template_key": "bilibili",
+                        "sub_uids_users": formatted_list
+                    })
+                    current_config["parsers_template"] = parsers_template
 
-            with open(config_path, "w", encoding="utf-8-sig") as f:
-                json.dump(current_config, f, ensure_ascii=False, indent=2)
+                with open(config_path, "w", encoding="utf-8-sig") as f:
+                    json.dump(current_config, f, ensure_ascii=False, indent=2)
 
-            logger.info(f"[bili_订阅] 配置写入成功，先有 {len(formatted_list)} 条订阅记录。")
+                logger.info(f"[bili_订阅] 配置写入成功，先有 {len(formatted_list)} 条订阅记录。")
 
-        except Exception as e:
-            logger.error(f"[bili_订阅] 写入该插件的配置文件失败: {e}")
-            raise e
+            except Exception as e:
+                logger.error(f"[bili_订阅] 写入该插件的配置文件失败: {e}")
+                raise e
