@@ -224,7 +224,7 @@ class PluginConfig(ConfigNode):
 
     parsers_template: list[dict[str, Any]]
 
-    _plugin_name = "astrbot_plugin_parserurl"
+    _plugin_name = "astrbot_plugin_parserURL"
 
     def __init__(self, config: AstrBotConfig, context: Context):
         super().__init__(config)
