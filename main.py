@@ -218,11 +218,23 @@ class ParserPlugin(Star):
     @filter.command("登录B站", alias={"blogin", "登录b站"})
     async def login_bilibili(self, event: AstrMessageEvent):
         """扫码登录B站"""
-        parser: BilibiliParser = self._get_parser_by_type(BilibiliParser)  # type: ignore
-        qrcode = await parser.login.login_with_qrcode()
-        yield event.chain_result([Image.fromBytes(qrcode)])
-        async for msg in parser.login.check_qr_state():
-            yield event.plain_result(msg)
+        try:
+            parser: BilibiliParser = self._get_parser_by_type(BilibiliParser)  # type: ignore
+            qrcode = await parser.login.login_with_qrcode()
+            yield event.chain_result([Image.fromBytes(qrcode)])
+            async for msg in parser.login.check_qr_state():
+                yield event.plain_result(msg)
+
+        except ValueError as e:
+            if "BilibiliParser" in str(e):
+                yield event.plain_result("B站相关功能未开启，请检查后台配置是否开启")
+            else:
+                yield event.plain_result(f"错误: {e}")
+
+        except Exception as e:
+            import traceback
+            logger.error(f"[bili_登录] 扫码登录发生异常: {traceback.format_exc()}")
+            yield event.plain_result(f"登录过程中发生错误，请稍后再试: {e}")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("订阅up")
@@ -270,6 +282,12 @@ class ParserPlugin(Star):
 
             await self.save_to_plugin_config()
             yield event.plain_result(f"成功订阅 UP主：{up_name}，uid：{uid}")
+
+        except ValueError as e:
+            if "BilibiliParser" in str(e):
+                yield event.plain_result("B站相关功能未开启，请检查后台配置是否开启")
+            else:
+                yield event.plain_result(f"错误: {e}")
 
         except Exception as e:
             import traceback
@@ -320,6 +338,12 @@ class ParserPlugin(Star):
             await self.save_to_plugin_config()
             yield event.plain_result(f"成功取消订阅 UP主：{up_name}，uid：{uid}")
 
+        except ValueError as e:
+            if "BilibiliParser" in str(e):
+                yield event.plain_result("B站相关功能未开启，请检查后台配置是否开启")
+            else:
+                yield event.plain_result(f"错误: {e}")
+
         except Exception as e:
             import traceback
             logger.error(f"[bili_订阅] 取消订阅失败: {traceback.format_exc()}")
@@ -342,6 +366,12 @@ class ParserPlugin(Star):
                 msg_lines.append(f"up名：{up_name}，uid：{uid}，地址：https://space.bilibili.com/{uid}")
 
             yield event.plain_result("\n".join(msg_lines))
+
+        except ValueError as e:
+            if "BilibiliParser" in str(e):
+                yield event.plain_result("B站相关功能未开启，请检查后台配置是否开启")
+            else:
+                yield event.plain_result(f"错误: {e}")
 
         except Exception as e:
             import traceback
@@ -374,6 +404,12 @@ class ParserPlugin(Star):
                 )
 
             yield event.plain_result("\n".join(msg_lines))
+
+        except ValueError as e:
+            if "BilibiliParser" in str(e):
+                yield event.plain_result("B站相关功能未开启，请检查后台配置是否开启")
+            else:
+                yield event.plain_result(f"错误: {e}")
 
         except Exception as e:
             import traceback
@@ -424,6 +460,12 @@ class ParserPlugin(Star):
                     json.dump(current_config, f, ensure_ascii=False, indent=2)
 
                 logger.info(f"[bili_订阅] 配置写入成功，先有 {len(formatted_list)} 条订阅记录。")
+
+            except ValueError as e:
+                if "BilibiliParser" in str(e):
+                    logger.error("B站相关功能未开启，请检查后台配置是否开启")
+                else:
+                    logger.error(f"错误: {e}")
 
             except Exception as e:
                 logger.error(f"[bili_订阅] 写入该插件的配置文件失败: {e}")
