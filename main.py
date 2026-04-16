@@ -167,12 +167,21 @@ class ParserPlugin(Star):
             if not isinstance(raw, dict):
                 logger.warning(f"Unexpected raw_message type: {type(raw)}")
                 return
+
+            try:
+                msg_id = int(raw["message_id"])
+                msg_time = int(raw["time"])
+                bot_self_id = int(raw["self_id"])
+            except (KeyError, ValueError, TypeError) as e:
+                logger.warning(f"获取仲裁所需字段失败。错误信息: {e}, raw_message: {raw}")
+                return
+
             is_win = await self.arbiter.compete(
                 bot=event.bot,
                 ctx=ArbiterContext(
-                    message_id=int(raw["message_id"]),
-                    msg_time=int(raw["time"]),
-                    self_id=int(raw["self_id"]),
+                    message_id=msg_id,
+                    msg_time=msg_time,
+                    self_id=bot_self_id,
                 ),
             )
             if not is_win:
