@@ -203,8 +203,8 @@ def generate_file_name(url: str, default_suffix: str = "") -> str:
     # 根据 url 获取文件后缀
     path = Path(urlparse(url).path)
     suffix = path.suffix if path.suffix else default_suffix
-    # 获取 url 的 md5 值
-    url_hash = hashlib.md5(url.encode()).hexdigest()[:16]
+    # 将原获取 url 的 md5 值修改为获取 sha256值
+    url_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
     file_name = f"{url_hash}{suffix}"
     return file_name
 
