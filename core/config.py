@@ -10,7 +10,7 @@ from typing import Any, Union, get_args, get_origin, get_type_hints
 from astrbot.api import logger
 from astrbot.core.config.astrbot_config import AstrBotConfig
 from astrbot.core.star.context import Context
-from astrbot.core.star.star_tools import StarTools
+from astrbot.api.star import StarTools
 from astrbot.core.utils.astrbot_path import get_astrbot_plugin_path
 
 
