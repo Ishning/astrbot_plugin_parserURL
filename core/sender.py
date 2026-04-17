@@ -14,6 +14,10 @@ from astrbot.core.message.components import (
 )
 from astrbot.core.platform.astr_message_event import AstrMessageEvent
 
+from astrbot.api.all import MessageChain
+
+import asyncio
+
 from .config import PluginConfig
 from .data import (
     AudioContent,
@@ -395,8 +399,8 @@ class MessageSender:
 
         """
         # import astrbot.api.message_components as Comp
-        from astrbot.api.all import MessageChain
-        import asyncio
+        # from astrbot.api.all import MessageChain
+        # import asyncio
 
         plan = self._build_send_plan(result, force_merge_override=False)
         preview_segs = []
