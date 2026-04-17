@@ -421,47 +421,31 @@ class ParserPlugin(Star):
             yield event.plain_result(f"查询错误: {e}")
 
     async def save_to_plugin_config(self):
-        """将 sub_map 写入到 AstrBot 插件的配置文件对应位置"""
-        import json
-        import os
-
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        plugin_name = os.path.basename(current_dir)
-        config_path = f"data/config/{plugin_name}_config.json"
-
-        #增加一层 asyncio.Lock 异步锁保护
-        #读写配置文件，看框架用的是 utf-8-sig 格式保持统一
+        """将 sub_map 同步到框架的内存配置并调用框架原生保存方法"""
+        # 增加一层 asyncio.Lock 异步锁保护
+        # 调整为直接操作 self.cfg 的内存对象，然后通知 self.cfg.save_config() 保存安全的写进去
         async with self._plugin_config_lock:
             try:
-                if os.path.exists(config_path):
-                    with open(config_path, "r", encoding="utf-8-sig") as f:
-                        current_config = json.load(f)
-                else:
-                    current_config = {"parsers_template": []}
-
                 parser: BilibiliParser = self._get_parser_by_type(BilibiliParser)   # type: ignore
-                formatted_list = []
 
+                formatted_list = []
                 for uid, targets in parser.sub_map.items():
                     parts = [str(uid)]
                     parts.extend([f"g{g_id}" for g_id in targets.get("groups", [])])
                     parts.extend([f"u{u_id}" for u_id in targets.get("users", [])])
                     formatted_list.append("-".join(parts))
 
-                parsers_template = current_config.get("parsers_template", [])
-                target_node = next((t for t in parsers_template if t.get("__template_key") == "bilibili"), None)
+                target_node = next((t for t in self.cfg.parsers_template if t.get("__template_key") == "bilibili"), None)
 
                 if target_node:
                     target_node["sub_uids_users"] = formatted_list
                 else:
-                    parsers_template.append({
+                    self.cfg.parsers_template.append({
                         "__template_key": "bilibili",
                         "sub_uids_users": formatted_list
                     })
-                    current_config["parsers_template"] = parsers_template
 
-                with open(config_path, "w", encoding="utf-8-sig") as f:
-                    json.dump(current_config, f, ensure_ascii=False, indent=2)
+                self.cfg.save_config()
 
                 logger.info(f"[bili_订阅] 配置写入成功，先有 {len(formatted_list)} 条订阅记录。")
 
