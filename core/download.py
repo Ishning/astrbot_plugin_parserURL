@@ -87,7 +87,7 @@ class Downloader:
         *,
         file_name: str | None = None,
         headers: dict[str, str] | None = None,
-        proxy: str | None | object = ...,
+        proxy: str | None = None,
     ) -> Path:
         """流式下载"""
         if not file_name:
@@ -208,7 +208,7 @@ class Downloader:
         *,
         file_name: str | None = None,
         headers: dict[str, str] | None = None,
-        proxy: str | None | object = ...,
+        proxy: str | None = None,
     ) -> Path:
         if file_name is None:
             file_name = generate_file_name(url, ".zip")
@@ -223,7 +223,7 @@ class Downloader:
         *,
         img_name: str | None = None,
         headers: dict[str, str] | None = None,
-        proxy: str | None | object = ...,
+        proxy: str | None = None,
     ) -> Path:
         if img_name is None:
             img_name = generate_file_name(url, ".jpg")
@@ -234,7 +234,7 @@ class Downloader:
         urls: list[str],
         *,
         headers: dict[str, str] | None = None,
-        proxy: str | None | object = ...,
+        proxy: str | None = None,
     ) -> list[Path]:
         paths_or_errs = await gather(
             *[self.download_img(url, headers=headers, proxy=proxy) for url in urls],
