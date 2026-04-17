@@ -241,8 +241,7 @@ class ParserPlugin(Star):
                 yield event.plain_result(f"错误: {e}")
 
         except Exception as e:
-            import traceback
-            logger.error(f"[bili_登录] 扫码登录发生异常: {traceback.format_exc()}")
+            logger.exception(f"[bili_登录] 扫码登录发生异常: {e}")
             yield event.plain_result(f"登录过程中发生错误，请稍后再试: {e}")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
@@ -299,8 +298,7 @@ class ParserPlugin(Star):
                 yield event.plain_result(f"错误: {e}")
 
         except Exception as e:
-            import traceback
-            logger.error(f"[bili_订阅] 添加订阅失败: {traceback.format_exc()}")
+            logger.exception(f"[bili_订阅] 添加订阅失败: {e}")
             yield event.plain_result(f"错误: {e}")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
@@ -354,8 +352,7 @@ class ParserPlugin(Star):
                 yield event.plain_result(f"错误: {e}")
 
         except Exception as e:
-            import traceback
-            logger.error(f"[bili_订阅] 取消订阅失败: {traceback.format_exc()}")
+            logger.exception(f"[bili_订阅] 取消订阅失败: {e}")
             yield event.plain_result(f"错误: {e}")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
@@ -383,8 +380,7 @@ class ParserPlugin(Star):
                 yield event.plain_result(f"错误: {e}")
 
         except Exception as e:
-            import traceback
-            logger.error(f"[bili_订阅] 查询订阅失败: {traceback.format_exc()}")
+            logger.exception(f"[bili_订阅] 查询订阅失败: {e}")
             yield event.plain_result(f"查询错误: {e}")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
@@ -421,8 +417,7 @@ class ParserPlugin(Star):
                 yield event.plain_result(f"错误: {e}")
 
         except Exception as e:
-            import traceback
-            logger.error(f"[bili_订阅] 查询详细订阅失败: {traceback.format_exc()}")
+            logger.exception(f"[bili_订阅] 查询详细订阅失败: {e}")
             yield event.plain_result(f"查询错误: {e}")
 
     async def save_to_plugin_config(self):
