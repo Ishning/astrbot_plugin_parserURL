@@ -2,6 +2,6 @@ name: astrbot_plugin_parserurl
 display_name: 社交媒体链接自动解析插件
 desc: 社交媒体分享链接解析插件。将A站、B站、抖音、小红书、微博...等网站的视频、图集、音频进行解析并发送
 help: 略
-version: v2.3.4
+version: v2.3.5
 author: Ishning
 repo: https://github.com/Ishning/astrbot_plugin_parserURL
