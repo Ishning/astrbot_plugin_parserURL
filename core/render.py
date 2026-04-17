@@ -72,9 +72,6 @@ class FontInfo:
     @lru_cache(maxsize=400)
     def get_char_width(self, char: str) -> int:
         """获取字符宽度，使用缓存优化"""
-        # bbox = self.font.getbbox(char)
-        # width = int(bbox[2] - bbox[0])
-        # return width
         return int(self.font.getlength(char))
 
     def get_char_width_fast(self, char: str) -> int:
@@ -325,7 +322,6 @@ class Renderer:
     @classmethod
     def _load_fonts(cls):
         """预加载自定义字体"""
-
         font_path = cls.DEFAULT_FONT_PATH
         # 创建 FontSet 对象
         cls.fontset = FontSet.new(font_path)
@@ -336,10 +332,9 @@ class Renderer:
         """预加载视频按钮"""
         with Image.open(cls.DEFAULT_VIDEO_BUTTON_PATH) as img:
             cls.video_button_image: PILImage = img.convert("RGBA")
-
-        # 设置透明度为 30%
-        alpha = cls.video_button_image.split()[-1]  # 获取 alpha 通道
-        alpha = alpha.point(lambda x: int(x * 0.3))  # 将透明度设置为 30%
+        # 获取alpha 通道，设置透明度为 30%
+        alpha = cls.video_button_image.split()[-1]
+        alpha = alpha.point(lambda x: int(x * 0.3))
         cls.video_button_image.putalpha(alpha)
 
     @classmethod
@@ -397,12 +392,10 @@ class Renderer:
         card_height = sum(section.height for section in sections)
         card_height += self.PADDING * 2 + self.SECTION_SPACING * (len(sections) - 1)
 
-        # 创建画布
+        # 把创建画布这种分配内存的操作放入线程池，以防极高分辨率下的卡顿
         bg_color = self.BG_COLOR if not_repost else self.REPOST_BG_COLOR
-        image = Image.new(
-            "RGB",
-            (card_width, card_height),
-            bg_color,
+        image = await asyncio.to_thread(
+            Image.new, "RGB", (card_width, card_height), bg_color
         )
 
         # 创建完整的渲染上下文
@@ -436,12 +429,13 @@ class Renderer:
             )
             return None
 
-    @suppress_exception
-    def _load_and_resize_cover(
+    #按上架需求进行核心分离，将高频 CPU/IO 任务拆解，以下为同步#
+    def _sync_load_and_resize_cover(
         self,
         cover_path: Path | None,
         content_width: int,
     ) -> PILImage | None:
+        """CPU/IO 操作：在子线程中加载并调整封面尺寸"""
         """加载并调整封面尺寸
 
         Args:
@@ -484,8 +478,8 @@ class Renderer:
 
             return cover_img
 
-    @suppress_exception
-    def _load_and_process_avatar(self, avatar: Path | None) -> PILImage | None:
+    def _sync_load_and_process_avatar(self, avatar: Path | None) -> PILImage | None:
+        """CPU/IO 操作：在子线程中加载并处理头像（圆形裁剪，带抗锯齿"""
         """加载并处理头像（圆形裁剪，带抗锯齿）"""
         if not avatar or not avatar.exists():
             return None
@@ -524,8 +518,97 @@ class Renderer:
                 (self.AVATAR_SIZE, self.AVATAR_SIZE),
                 Image.Resampling.LANCZOS,
             )
-
             return output_avatar
+
+    def _sync_process_graphics_image(
+        self, img_path: Path, content_width: int
+    ) -> PILImage:
+        """CPU/IO 操作：在子线程处理长图/配图等待"""
+        with Image.open(img_path) as original_img:
+            if original_img.mode not in ("RGB", "RGBA"):
+                original_img = original_img.convert("RGB")
+            # 调整图片尺寸以适应内容宽度
+            if original_img.width > content_width:
+                ratio = content_width / original_img.width
+                new_height = int(original_img.height * ratio)
+                image = original_img.resize(
+                    (content_width, new_height),
+                    Image.Resampling.LANCZOS,
+                )
+            else:
+                image = original_img.copy()
+            return image
+
+    def _sync_load_and_process_grid_image(
+        self,
+        img_path: Path,
+        content_width: int,
+        img_count: int,
+    ) -> PILImage | None:
+        """CPU/IO 操作：在子线程加载并处理网格切图"""
+        if not img_path.exists():
+            return None
+
+        with Image.open(img_path) as original_img:
+            if original_img.mode not in ("RGB", "RGBA"):
+                img = original_img.convert("RGB")
+            else:
+                img = original_img
+
+            if img_count >= 2:
+                img = self._crop_to_square(img)
+
+            if img_count == 1:
+                max_width = content_width
+                max_height = min(self.MAX_IMAGE_HEIGHT, content_width)
+                if img.width > max_width or img.height > max_height:
+                    ratio = min(max_width / img.width, max_height / img.height)
+                    new_size = (int(img.width * ratio), int(img.height * ratio))
+                    img = img.resize(new_size, Image.Resampling.LANCZOS)
+                elif img is original_img:
+                    img = img.copy()
+            else:
+                if img_count in (2, 4):
+                    num_gaps = 3
+                    max_size = (content_width - self.IMAGE_GRID_SPACING * num_gaps) // 2
+                    max_size = min(max_size, self.IMAGE_2_GRID_SIZE)
+                else:
+                    num_gaps = self.IMAGE_GRID_COLS + 1
+                    max_size = (
+                        content_width - self.IMAGE_GRID_SPACING * num_gaps
+                    ) // self.IMAGE_GRID_COLS
+                    max_size = min(max_size, self.IMAGE_3_GRID_SIZE)
+
+                if img.width > max_size or img.height > max_size:
+                    ratio = min(max_size / img.width, max_size / img.height)
+                    new_size = (int(img.width * ratio), int(img.height * ratio))
+                    img = img.resize(new_size, Image.Resampling.LANCZOS)
+                elif img is original_img:
+                    img = img.copy()
+
+            return img
+
+    #异步封装入口---#
+    @suppress_exception_async
+    async def _load_and_resize_cover(
+        self,
+        cover_path: Path | None,
+        content_width: int,
+    ) -> PILImage | None:
+        return await asyncio.to_thread(self._sync_load_and_resize_cover, cover_path, content_width)
+
+    @suppress_exception_async
+    async def _load_and_process_avatar(self, avatar: Path | None) -> PILImage | None:
+        return await asyncio.to_thread(self._sync_load_and_process_avatar, avatar)
+
+    @suppress_exception_async
+    async def _load_and_process_grid_image(
+        self,
+        img_path: Path,
+        content_width: int,
+        img_count: int,
+    ) -> PILImage | None:
+        return await asyncio.to_thread(self._sync_load_and_process_grid_image, img_path, content_width, img_count)
 
     async def _calculate_sections(
         self, result: ParseResult, content_width: int
@@ -549,23 +632,21 @@ class Renderer:
             sections.append(TitleSectionData(height=title_height, lines=title_lines))
 
         # 3. 封面，图集，图文内容
-        # 处理 cover_path 在多图情况下使用 await 防止值为 None 时 await 导致的崩溃
         cover_p_resolved: Path | None = None
         try:
             _cover = result.cover_path
             if _cover is not None:
                 if hasattr(_cover, "__await__"):
-                    # 如果是异步任务，先 await 拿到结果
                     _awaited_cover = await _cover  # type: ignore
                     if isinstance(_awaited_cover, Path):
                         cover_p_resolved = _awaited_cover
                 elif isinstance(_cover, Path):
-                    # 如果本来就是 Path 对象，直接赋值
                     cover_p_resolved = _cover
         except Exception as e:
             logger.debug(f"获取封面异常，按无封面处理: {e}")
 
-        if cover_img := self._load_and_resize_cover(
+        # 原此处方法已转为异步调用
+        if cover_img := await self._load_and_resize_cover(
             cover_p_resolved,
             content_width=content_width,
         ):
@@ -624,52 +705,40 @@ class Renderer:
         """计算图文内容部分的高度和内容"""
         # 加载图片
         img_path = await graphics_content.get_path()
-        with Image.open(img_path) as original_img:
-            # 增加一层保护，以防止图像崩溃导致整个渲染失败
-            if original_img.mode not in ("RGB", "RGBA"):
-                original_img = original_img.convert("RGB")
-            # 调整图片尺寸以适应内容宽度
-            if original_img.width > content_width:
-                ratio = content_width / original_img.width
-                new_height = int(original_img.height * ratio)
-                image = original_img.resize(
-                    (content_width, new_height),
-                    Image.Resampling.LANCZOS,
-                )
-            else:
-                # 如果不需要缩放，copy 一份
-                image = original_img.copy()
 
-            # 处理文本内容
-            text_lines = []
-            if graphics_content.text:
-                text_lines = self._wrap_text(
-                    graphics_content.text,
-                    content_width,
-                    self.fontset.text_font,
-                )
+        # 修改了原方法，将耗时的图片操作通过子线程完成
+        image = await asyncio.to_thread(self._sync_process_graphics_image, img_path, content_width)
 
-            # 计算总高度：文本高度 + 图片高度 + alt文本高度 + 间距
-            text_height = (
-                len(text_lines) * self.fontset.text_font.line_height
-                if text_lines
-                else 0
+        # 处理文本内容
+        text_lines = []
+        if graphics_content.text:
+            text_lines = self._wrap_text(
+                graphics_content.text,
+                content_width,
+                self.fontset.text_font,
             )
-            alt_height = (
-                self.fontset.extra_font.line_height if graphics_content.alt else 0
-            )
-            total_height = text_height + image.height + alt_height
-            if text_lines:
-                total_height += self.SECTION_SPACING  # 文本和图片之间的间距
-            if graphics_content.alt:
-                total_height += self.SECTION_SPACING  # 图片和alt文本之间的间距
 
-            return GraphicsSectionData(
-                height=total_height,
-                text_lines=text_lines,
-                image=image,
-                alt_text=graphics_content.alt,
-            )
+        # 计算总高度：文本高度 + 图片高度 + alt文本高度 + 间距
+        text_height = (
+            len(text_lines) * self.fontset.text_font.line_height
+            if text_lines
+            else 0
+        )
+        alt_height = (
+            self.fontset.extra_font.line_height if graphics_content.alt else 0
+        )
+        total_height = text_height + image.height + alt_height
+        if text_lines:
+            total_height += self.SECTION_SPACING  # 文本和图片之间的间距
+        if graphics_content.alt:
+            total_height += self.SECTION_SPACING  # 图片和alt文本之间的间距
+
+        return GraphicsSectionData(
+            height=total_height,
+            text_lines=text_lines,
+            image=image,
+            alt_text=graphics_content.alt,
+        )
 
     @suppress_exception_async
     async def _calculate_header_section(
@@ -681,10 +750,9 @@ class Renderer:
         if result.author is None:
             return None
 
-        # 加载头像
-        avatar_img = self._load_and_process_avatar(
-            await result.author.get_avatar_path()
-        )
+        # 修改了原方法，现在头像的处理是完全非阻塞的异步过程
+        avatar_path = await result.author.get_avatar_path()
+        avatar_img = await self._load_and_process_avatar(avatar_path)
 
         # 计算文字区域宽度（始终预留头像空间）
         text_area_width = content_width - (self.AVATAR_SIZE + self.AVATAR_TEXT_GAP)
@@ -727,7 +795,10 @@ class Renderer:
         # 缩放图片
         scaled_width = int(repost_image.width * self.REPOST_SCALE)
         scaled_height = int(repost_image.height * self.REPOST_SCALE)
-        repost_image_scaled = repost_image.resize(
+
+        # 修改原方法，现在缩放图片通过子线程实现，避免处理大图片时候的处理阻塞
+        repost_image_scaled = await asyncio.to_thread(
+            repost_image.resize,
             (scaled_width, scaled_height),
             Image.Resampling.LANCZOS,
         )
@@ -764,7 +835,7 @@ class Renderer:
             except Exception as e:
                 logger.debug(f"获取网格图片失败，跳过该图: {e}")
                 continue
-                
+
             img = await self._load_and_process_grid_image(
                 img_path, content_width, img_count
             )
@@ -804,59 +875,7 @@ class Renderer:
             remaining_count=remaining_count,
         )
 
-    @suppress_exception_async
-    async def _load_and_process_grid_image(
-        self,
-        img_path: Path,
-        content_width: int,
-        img_count: int,
-    ) -> PILImage | None:
-        """加载并处理网格图片"""
-        if not img_path.exists():
-            return None
-
-        with Image.open(img_path) as original_img:
-            # 兼容 Gif、WEBP 等带调色板的图片，让强制转为 RGB，防止缩放时报错
-            if original_img.mode not in ("RGB", "RGBA"):
-                img = original_img.convert("RGB")
-            else:
-                img = original_img
-
-            # 根据图片数量决定处理方式
-            if img_count >= 2:
-                img = self._crop_to_square(img)
-
-            # 计算图片尺寸
-            if img_count == 1:
-                max_width = content_width
-                max_height = min(self.MAX_IMAGE_HEIGHT, content_width)
-                if img.width > max_width or img.height > max_height:
-                    ratio = min(max_width / img.width, max_height / img.height)
-                    new_size = (int(img.width * ratio), int(img.height * ratio))
-                    img = img.resize(new_size, Image.Resampling.LANCZOS)
-                elif img is original_img:
-                    img = img.copy()
-            else:
-                if img_count in (2, 4):
-                    num_gaps = 3 
-                    max_size = (content_width - self.IMAGE_GRID_SPACING * num_gaps) // 2
-                    max_size = min(max_size, self.IMAGE_2_GRID_SIZE)
-                else:
-                    num_gaps = self.IMAGE_GRID_COLS + 1
-                    max_size = (
-                        content_width - self.IMAGE_GRID_SPACING * num_gaps
-                    ) // self.IMAGE_GRID_COLS
-                    max_size = min(max_size, self.IMAGE_3_GRID_SIZE)
-
-                if img.width > max_size or img.height > max_size:
-                    ratio = min(max_size / img.width, max_size / img.height)
-                    new_size = (int(img.width * ratio), int(img.height * ratio))
-                    img = img.resize(new_size, Image.Resampling.LANCZOS)
-                elif img is original_img:
-                    img = img.copy()
-
-            return img
-
+    # 原纯同步的辅助逻辑 -#
     def _crop_to_square(self, img: PILImage) -> PILImage:
         """将图片裁剪为方形（上下切割）"""
         width, height = img.size
@@ -924,7 +943,6 @@ class Renderer:
 
         # 绘制简单的用户图标（圆形头部 + 肩部）
         center_x = self.AVATAR_SIZE // 2
-
         # 头部圆形
         head_radius = int(self.AVATAR_SIZE * head_radius_ratio)
         head_y = int(self.AVATAR_SIZE * head_ratio)
@@ -967,8 +985,8 @@ class Renderer:
         """绘制 header 部分"""
         x_pos = self.PADDING
 
-        # 绘制头像或占位符
-        avatar = section.avatar if section.avatar else self._create_avatar_placeholder()
+        # 绘制头像或占位符，这里也可以使用异步操作。不过这是极低频微小开销可以不管
+        avatar = section.avatar if section.avatar else await asyncio.to_thread(self._create_avatar_placeholder)
         ctx.image.paste(avatar, (x_pos, ctx.y_pos), avatar)
 
         # 文字始终从头像位置后面开始
@@ -1104,7 +1122,6 @@ class Renderer:
         """绘制转发内容"""
         # 获取缩放后的转发图片
         repost_image = section.scaled_image
-
         # 转发框占满整个内容区域，左右和边缘对齐
         repost_x = self.PADDING
         repost_y = ctx.y_pos
@@ -1134,7 +1151,6 @@ class Renderer:
 
         # 将缩放后的转发图片贴到主画布上
         ctx.image.paste(repost_image, (card_x, card_y))
-
         ctx.y_pos += repost_height + self.SECTION_SPACING
 
     def _draw_image_grid(
@@ -1181,7 +1197,6 @@ class Renderer:
             for i, img in enumerate(row_images):
                 # 统一使用间距计算方式
                 img_x = self.PADDING + img_spacing + i * (max_img_size + img_spacing)
-
                 img_y = current_y + img_spacing  # 每行上方都有间距
 
                 # 居中放置图片

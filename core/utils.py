@@ -185,7 +185,7 @@ def fmt_size(file_path: Path) -> str:
     """格式化文件大小
 
     Args:
-        video_path (Path): 视频路径
+        file_path (Path): 文件路径
     """
     return f"大小: {file_path.stat().st_size / 1024 / 1024:.2f} MB"
 

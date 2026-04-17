@@ -14,7 +14,7 @@ EmojiLikeArbiter 协议实现（生产级）
 - 同一排序规则
 - 同一固定时间窗口
 
-⚠️ 本文件【不依赖任何机器人框架】
+本代码文件不依赖任何机器人框架（除日志记录外）
 ⚠️ 仅假设 bot 对象支持 CQHTTP 标准 action
 """
 
@@ -23,6 +23,8 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from typing import Any
+
+from astrbot.api import logger
 
 # ======================================================================
 # 仲裁最小不可变上下文
@@ -94,7 +96,9 @@ class EmojiLikeArbiter:
                 emoji_type=self._EMOJI_TYPE,
                 set=True,
             )
-        except Exception:
+        except Exception as e:
+            # 增加 logger日志
+            logger.exception(f"[Arbiter] Phase 2 占坑失败 (Message ID: {mid}): {e}")
             return False
 
         # Phase 3：仲裁窗口等待
@@ -125,7 +129,9 @@ class EmojiLikeArbiter:
                         emoji_type=self._FEEDBACK_EMOJI_TYPE,
                         set=True,
                     )
-                except Exception:
+                except Exception as e:
+                    # 增加logger，这里失败虽然不影响运行，但审核要去还是补上一个 warning 级别日志用于查看
+                    logger.warning(f"[Arbiter] Phase 6 确定性递补确认失败: {e}")
                     pass
 
             await asyncio.sleep(self._FEEDBACK_WAIT_SEC)
@@ -153,7 +159,9 @@ class EmojiLikeArbiter:
                 emojiId=str(emoji_id),
                 emojiType=emoji_type,
             )
-        except Exception:
+        except Exception as e:
+            # 增加logger
+            logger.exception(f"[Arbiter] 拉取指定点赞用户列表失败 (Message ID: {message_id}): {e}")
             return []
 
         likes = (resp or {}).get("emojiLikesList") or []
@@ -162,7 +170,9 @@ class EmojiLikeArbiter:
         for item in likes:
             try:
                 users.append(int(item["tinyId"]))
-            except Exception:
+            # 增加logger
+            except (KeyError, ValueError, TypeError) as e:
+                logger.warning(f"[Arbiter] 解析指定点赞用户列表数据异常: {e}, item: {item}")
                 continue
 
         return users
