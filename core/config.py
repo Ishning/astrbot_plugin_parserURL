@@ -168,6 +168,9 @@ class ParserItem(ConfigNode):
     only_previewCard: bool | None
     ignore_lottery: bool | None
 
+    #控制预览卡片是否显示详细信息
+    show_preview_detail: bool | None
+
     @property
     def name(self) -> str:
         return self._data.get("__template_key")

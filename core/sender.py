@@ -357,14 +357,14 @@ class MessageSender:
         """
         groups = self._resolve_groups(result)
 
-        platform_name = result.platform.display_name
-        match platform_name:
-            case "B站" | "抖音" :
-                segs=self._build_text_fallback_for_url(result)
-            # case "微博":
-            #     segs = self._build_text_fallback(result)
-            case _:
-                segs = self._build_text_fallback(result)
+        platform_id = result.platform.name
+        parser_cfg = getattr(self.cfg.parser, platform_id, None)
+        show_detail = getattr(parser_cfg, "show_preview_detail", False) if parser_cfg else False
+
+        if show_detail:
+            segs = self._build_text_fallback(result)
+        else:
+            segs = self._build_text_fallback_for_url(result)
 
         sent = False
         for i, group in enumerate(groups):
@@ -372,9 +372,11 @@ class MessageSender:
             current_text_segs = segs if i == len(groups) - 1 else None
             sent = await self._send_group(event, result, group, current_text_segs) or sent 
 
+        platform_name = result.platform.display_name
+
         if not sent:
             if not segs:
-                logger.warning(f"[{platform_name}] 发送结果为空，不执行发送")
+                logger.warning(f"[{platform_name}] 平台发送结果为空，不执行发送")
                 return
             try:
                 await event.send(event.chain_result(segs))

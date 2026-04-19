@@ -148,6 +148,12 @@
                         "type": "text",
                         "default": ""
                     },
+                    "show_preview_detail":{
+                        "description": "预览卡片更多内容控制",
+                        "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
+                        "type": "bool",
+                        "default": false
+                    },
                     "sub_enable": {
                         "description": "启用动态订阅",
                         "hint": "开启后将定时检查目标UP主的最新动态并解析发送",
@@ -269,6 +275,12 @@
                         "hint": "选填",
                         "type": "text",
                         "default": ""
+                    },
+                    "show_preview_detail":{
+                        "description": "预览卡片更多内容控制",
+                        "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
+                        "type": "bool",
+                        "default": false
                     }
                 }
             },
@@ -311,6 +323,12 @@
                         "hint": "选填",
                         "type": "text",
                         "default": ""
+                    },
+                    "show_preview_detail":{
+                        "description": "预览卡片更多内容控制",
+                        "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
+                        "type": "bool",
+                        "default": false
                     }
                 }
             },
@@ -332,6 +350,12 @@
                         "hint": "选填, 小红书部分链接解析有水印, 填充Cookies可去除水印",
                         "type": "text",
                         "default": ""
+                    },
+                    "show_preview_detail":{
+                        "description": "预览卡片更多内容控制",
+                        "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
+                        "type": "bool",
+                        "default": false
                     }
                 }
             },
@@ -366,6 +390,12 @@
                         "type": "string",
                         "default": "first",
                         "options": ["none", "first", "all"]
+                    },
+                    "show_preview_detail":{
+                        "description": "预览卡片更多内容控制",
+                        "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
+                        "type": "bool",
+                        "default": false
                     }
                 }
             },
@@ -387,6 +417,12 @@
                         "hint": "必填! 否则无法解析知乎内容",
                         "type": "text",
                         "default": ""
+                    },
+                    "show_preview_detail":{
+                        "description": "预览卡片更多内容控制",
+                        "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
+                        "type": "bool",
+                        "default": false
                     }
                 }
             },
@@ -408,6 +444,12 @@
                         "hint": "选填",
                         "type": "text",
                         "default": ""
+                    },
+                    "show_preview_detail":{
+                        "description": "预览卡片更多内容控制",
+                        "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
+                        "type": "bool",
+                        "default": false
                     }
                 }
             },
@@ -429,6 +471,12 @@
                         "hint": "必填! 同时注意油管Cookie有效期较短",
                         "type": "text",
                         "default": ""
+                    },
+                    "show_preview_detail":{
+                        "description": "预览卡片更多内容控制",
+                        "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
+                        "type": "bool",
+                        "default": false
                     }
                 }
             },
@@ -450,6 +498,12 @@
                         "hint": "必填",
                         "type": "text",
                         "default": ""
+                    },
+                    "show_preview_detail":{
+                        "description": "预览卡片更多内容控制",
+                        "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
+                        "type": "bool",
+                        "default": false
                     }
                 }
             },
@@ -471,6 +525,12 @@
                         "hint": "选填",
                         "type": "text",
                         "default": ""
+                    },
+                    "show_preview_detail":{
+                        "description": "预览卡片更多内容控制",
+                        "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
+                        "type": "bool",
+                        "default": false
                     }
                 }
             },
@@ -492,6 +552,12 @@
                         "hint": "选填",
                         "type": "text",
                         "default": ""
+                    },
+                    "show_preview_detail":{
+                        "description": "预览卡片更多内容控制",
+                        "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
+                        "type": "bool",
+                        "default": false
                     }
                 }
             },
@@ -513,6 +579,12 @@
                         "hint": "选填",
                         "type": "text",
                         "default": ""
+                    },
+                    "show_preview_detail":{
+                        "description": "预览卡片更多内容控制",
+                        "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
+                        "type": "bool",
+                        "default": false
                     }
                 }
             },
@@ -534,6 +606,12 @@
                         "hint": "选填",
                         "type": "text",
                         "default": ""
+                    },
+                    "show_preview_detail":{
+                        "description": "预览卡片更多内容控制",
+                        "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
+                        "type": "bool",
+                        "default": false
                     }
                 }
             }

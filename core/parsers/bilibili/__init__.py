@@ -510,13 +510,16 @@ class BilibiliParser(BaseParser):
             )
             contents.append(ImageContent(img_task))
 
+        dynamic_url=f'https://t.bilibili.com/{dynamic_info.id_str}'
+
         return self.result(
             title=dynamic_info.title,
             text=dynamic_info.text,
             timestamp=dynamic_info.timestamp,
             author=author,
             contents=contents,
-            repost=repost
+            repost=repost,
+            url=dynamic_url
         )
 
     async def parse_opus(self, opus_id: int):
@@ -644,6 +647,8 @@ class BilibiliParser(BaseParser):
             if final_title and final_title.endswith(" - 哔哩哔哩"):
                 final_title = final_title.replace(" - 哔哩哔哩", "")
 
+        opus_url = f"https://www.bilibili.com/opus/{opus_data.item.id_str}"
+
         return self.result(
             title=final_title,
             author=author,
@@ -651,6 +656,7 @@ class BilibiliParser(BaseParser):
             cover=cover_task, #增加封面
             contents=contents,
             text=current_text.strip(),
+            url=opus_url
         )
     
     async def _check_is_article(self, opus_info: dict) -> bool:
