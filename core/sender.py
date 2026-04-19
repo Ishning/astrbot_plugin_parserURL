@@ -364,7 +364,7 @@ class MessageSender:
         if show_detail:
             segs = self._build_text_fallback(result)
         else:
-            segs=self._build_text_fallback_for_url(result)
+            segs = self._build_text_fallback_for_url(result)
 
         sent = False
         for i, group in enumerate(groups):
