@@ -132,7 +132,6 @@ class EmojiLikeArbiter:
                 except Exception as e:
                     # 增加logger，这里失败虽然不影响运行，但审核要去还是补上一个 warning 级别日志用于查看
                     logger.warning(f"[Arbiter] Phase 6 确定性递补确认失败: {e}")
-                    pass
 
             await asyncio.sleep(self._FEEDBACK_WAIT_SEC)
 

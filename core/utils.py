@@ -221,7 +221,7 @@ def extract_json_url(data: dict | str) -> str | None:
     if isinstance(data, str):
         try:
             data = json.loads(data)
-        except Exception:
+        except json.JSONDecodeError:
             return None
 
     if not isinstance(data, dict):
