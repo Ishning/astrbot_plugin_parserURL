@@ -291,10 +291,18 @@ class WeiBoParser(BaseParser):
     def build_weibo_data(self, data: "WeiboData"):
         contents = []
 
-        # 添加视频内容
-        if video_url := data.video_url:
-            cover_url = data.cover_url
-            contents.append(self.create_video_content(video_url, cover_url))
+        #调整读取逻辑，有些混排的放在 vido 下有 videoSrc字段是视频的
+        if data.pics:
+            for pic in data.pics:
+                if pic.type == "video" and pic.videoSrc:
+                    contents.append(self.create_video_content(pic.videoSrc, None))
+                else:
+                    contents.extend(self.create_image_contents([pic.large.url]))
+        else:
+            #保留原有的添加视频内容代码
+            if video_url := data.video_url:
+                # cover_url = data.cover_url
+                contents.append(self.create_video_content(video_url, None))
 
         # 添加图片内容
         if image_urls := data.image_urls:
@@ -357,6 +365,8 @@ class LargeInPic(Struct):
 class Pic(Struct):
     url: str
     large: LargeInPic
+    type: str | None = None
+    videoSrc: str | None = None
 
 
 class Urls(Struct):
