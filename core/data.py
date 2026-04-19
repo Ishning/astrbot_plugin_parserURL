@@ -154,7 +154,7 @@ class Author:
     def __repr__(self) -> str:
         repr = f"Author(name={self.name}"
         if self.avatar:
-            repr += f", avatar_{repr_path_task(self.avatar)}"
+            repr += f", avatar={repr_path_task(self.avatar)}"
         if self.description:
             repr += f", description={self.description}"
         return repr + ")"
