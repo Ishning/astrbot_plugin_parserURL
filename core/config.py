@@ -267,7 +267,7 @@ class PluginConfig(ConfigNode):
     def load_parser_template(file: Path) -> list[dict[str, Any]]:
         try:
             with file.open(encoding="utf-8-sig") as f:
-                template = json.loads(f.read())
+                template = json.load(f)
                 logger.info(f"[parser] 加载模板成功: {file}")
                 return template
         except Exception as e:
