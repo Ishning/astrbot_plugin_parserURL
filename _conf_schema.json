@@ -152,7 +152,7 @@
                         "description": "预览卡片更多内容控制",
                         "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
                         "type": "bool",
-                        "default": true
+                        "default": false
                     },
                     "sub_enable": {
                         "description": "启用动态订阅",
@@ -280,7 +280,7 @@
                         "description": "预览卡片更多内容控制",
                         "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
                         "type": "bool",
-                        "default": true
+                        "default": false
                     }
                 }
             },
@@ -328,7 +328,7 @@
                         "description": "预览卡片更多内容控制",
                         "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
                         "type": "bool",
-                        "default": true
+                        "default": false
                     }
                 }
             },
@@ -355,7 +355,7 @@
                         "description": "预览卡片更多内容控制",
                         "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
                         "type": "bool",
-                        "default": true
+                        "default": false
                     }
                 }
             },
@@ -395,7 +395,7 @@
                         "description": "预览卡片更多内容控制",
                         "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
                         "type": "bool",
-                        "default": true
+                        "default": false
                     }
                 }
             },
@@ -422,7 +422,7 @@
                         "description": "预览卡片更多内容控制",
                         "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
                         "type": "bool",
-                        "default": true
+                        "default": false
                     }
                 }
             },
@@ -449,7 +449,7 @@
                         "description": "预览卡片更多内容控制",
                         "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
                         "type": "bool",
-                        "default": true
+                        "default": false
                     }
                 }
             },
@@ -476,7 +476,7 @@
                         "description": "预览卡片更多内容控制",
                         "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
                         "type": "bool",
-                        "default": true
+                        "default": false
                     }
                 }
             },
@@ -503,7 +503,7 @@
                         "description": "预览卡片更多内容控制",
                         "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
                         "type": "bool",
-                        "default": true
+                        "default": false
                     }
                 }
             },
@@ -530,7 +530,7 @@
                         "description": "预览卡片更多内容控制",
                         "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
                         "type": "bool",
-                        "default": true
+                        "default": false
                     }
                 }
             },
@@ -557,7 +557,7 @@
                         "description": "预览卡片更多内容控制",
                         "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
                         "type": "bool",
-                        "default": true
+                        "default": false
                     }
                 }
             },
@@ -584,7 +584,7 @@
                         "description": "预览卡片更多内容控制",
                         "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
                         "type": "bool",
-                        "default": true
+                        "default": false
                     }
                 }
             },
@@ -611,7 +611,7 @@
                         "description": "预览卡片更多内容控制",
                         "hint": "开启后预览卡片下面会显示更多文本内容，关闭则只显示链接",
                         "type": "bool",
-                        "default": true
+                        "default": false
                     }
                 }
             }
