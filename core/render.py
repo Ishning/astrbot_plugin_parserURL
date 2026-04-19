@@ -35,7 +35,7 @@ def suppress_exception(
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            logger.debug(f"函数 {func.__name__} 执行失败: {e}")
+            logger.warning(f"函数 {func.__name__} 执行失败: {e}")
             return None
 
     return wrapper
@@ -51,7 +51,7 @@ def suppress_exception_async(
         try:
             return await func(*args, **kwargs)
         except Exception as e:
-            logger.debug(f"函数 {func.__name__} 执行失败: {e}")
+            logger.warning(f"函数 {func.__name__} 执行失败: {e}")
             return None
 
     return wrapper
@@ -325,7 +325,7 @@ class Renderer:
         font_path = cls.DEFAULT_FONT_PATH
         # 创建 FontSet 对象
         cls.fontset = FontSet.new(font_path)
-        logger.debug(f"加载字体「{font_path.name}」成功")
+        logger.info(f"加载字体「{font_path.name}」成功")
 
     @classmethod
     def _load_video_button(cls):
@@ -643,7 +643,7 @@ class Renderer:
                 elif isinstance(_cover, Path):
                     cover_p_resolved = _cover
         except Exception as e:
-            logger.debug(f"获取封面异常，按无封面处理: {e}")
+            logger.warning(f"获取封面异常，按无封面处理: {e}")
 
         # 原此处方法已转为异步调用
         if cover_img := await self._load_and_resize_cover(
@@ -833,7 +833,7 @@ class Renderer:
             try:
                 img_path = await img_content.get_path()
             except Exception as e:
-                logger.debug(f"获取网格图片失败，跳过该图: {e}")
+                logger.warning(f"获取网格图片失败，跳过该图: {e}")
                 continue
 
             img = await self._load_and_process_grid_image(
