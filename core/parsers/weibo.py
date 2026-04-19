@@ -295,18 +295,18 @@ class WeiBoParser(BaseParser):
         if data.pics:
             for pic in data.pics:
                 if pic.type == "video" and pic.videoSrc:
-                    contents.append(self.create_video_content(pic.videoSrc, None))
+                    contents.append(self.create_video_content(pic.videoSrc, pic.large.url))
                 else:
                     contents.extend(self.create_image_contents([pic.large.url]))
         else:
             #保留原有的添加视频内容代码
             if video_url := data.video_url:
-                # cover_url = data.cover_url
-                contents.append(self.create_video_content(video_url, None))
+                cover_url = data.cover_url
+                contents.append(self.create_video_content(video_url, cover_url))
 
         # 添加图片内容
-        if image_urls := data.image_urls:
-            contents.extend(self.create_image_contents(image_urls))
+        # if image_urls := data.image_urls:
+        #     contents.extend(self.create_image_contents(image_urls))
 
         # 构建作者
         author = self.create_author(data.display_name, data.user.profile_image_url)
