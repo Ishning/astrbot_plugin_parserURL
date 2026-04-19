@@ -359,7 +359,7 @@ class MessageSender:
 
         platform_id = result.platform.name
         parser_cfg = getattr(self.cfg.parser, platform_id, None)
-        show_detail = getattr(parser_cfg, "show_preview_detail", True) if parser_cfg else True
+        show_detail = getattr(parser_cfg, "show_preview_detail", False) if parser_cfg else False
 
         if show_detail:
             segs = self._build_text_fallback(result)
