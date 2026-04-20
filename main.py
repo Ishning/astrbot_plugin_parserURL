@@ -78,7 +78,7 @@ class ParserPlugin(Star):
             platform_name = cls.platform.name
 
             if platform_name not in enabled_platforms:
-                logger.debug(f"[parser] 平台未启用或未配置: {platform_name}")
+                logger.info(f"[parser] 平台未启用或未配置: {platform_name}")
                 continue
 
             enabled_classes.append(cls)
@@ -91,7 +91,7 @@ class ParserPlugin(Star):
             for keyword, _ in cls._key_patterns:
                 self.parser_map[keyword] = parser
 
-        logger.debug(f"启用平台: {'、'.join(enabled_names) if enabled_names else '无'}")
+        logger.info(f"启用平台: {'、'.join(enabled_names) if enabled_names else '无'}")
 
         # -------- 关键词-正则表（统一生成） --------
         patterns: list[tuple[str, re.Pattern[str]]] = []

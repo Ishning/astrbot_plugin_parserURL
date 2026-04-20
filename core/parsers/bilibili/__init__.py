@@ -324,6 +324,12 @@ class BilibiliParser(BaseParser):
 
     async def _warm_up_cache_loop(self):
         """用于每30min执行一次 warm_up_cache 函数来检查是否有新uid进来，有的话进行处理"""
+
+        if self.sub_map:
+            logger.info(f"[bili_订阅] 当前已加载 {len(self.sub_map)} 个 up uid，开始预加载 up 信息")
+        else:
+            logger.info("[bili_订阅] 当前暂未配置任何 up uid")
+
         while True:
             try:
                 await self.warm_up_cache()
@@ -334,16 +340,18 @@ class BilibiliParser(BaseParser):
 
     async def warm_up_cache(self):
         """用于预加载 get_up_info 函数进行的内容"""
-        import asyncio
         if not self.sub_map:
             return
 
-        logger.info(f"[bili_订阅] 预载加载 {len(self.sub_map)} 个 UP 主的名字缓存")
+        uids_to_fetch = [uid for uid in self.sub_map.keys() if uid not in self.uid_name_cache]
 
-        for uid in list(self.sub_map.keys()):
-            if uid in self.uid_name_cache:
-                continue
+        if not uids_to_fetch:
+            logger.debug(f"[bili_订阅] 目前所有 {len(self.sub_map)} up 状态信息已是最新")
+            return
 
+        logger.info(f"[bili_订阅] 发现 {len(uids_to_fetch)} 个新 up uid，开始预加载 up 信息")
+
+        for uid in uids_to_fetch:
             try:
                 await self.get_up_info(uid)
 
@@ -354,10 +362,10 @@ class BilibiliParser(BaseParser):
                     logger.warning(f"[bili_订阅] 触发错误 -352，风控校验失败。1分钟后再尝试")
                     await asyncio.sleep(60)
                 else:
-                    logger.warning(f"预加载 UID {uid} 失败: {err_msg}")
+                    logger.warning(f"[bili_订阅] 预加载 UID {uid} 失败: {err_msg}")
                 continue
 
-        logger.info("[bili_订阅] 预载加载完成")
+        logger.info("[bili_订阅] 预载加载 up 信息状态完成")
 
     async def get_up_info(self, uid: int) -> str:
         """用户解析获取uid的名字等信息"""
@@ -977,6 +985,20 @@ class BilibiliParser(BaseParser):
                             await self._save_cache()
                             continue
 
+                        #动态id以防止up 删除了某一条动态因滑动窗口设置意外触发将老动态发送出去的问题
+                        if not is_first_init and uid_cache:
+                            try:
+                                # 获取最大 id，若遇到说到的滑动窗口bug意外捕获到老id 会因为比目前记录最大 id小从而跳过不发送
+                                max_cached_id = max([int(k) for k in uid_cache.keys() if str(k).isdigit()], default = 0)
+                                int_dynamic_id = int(dynamic_id)
+
+                                if int_dynamic_id < max_cached_id:
+                                    logger.info(f"[bili_订阅] 发现因删动态出现的滑动窗口获取到的老动态id： {dynamic_id}，已自动跳过不发送")
+                                    uid_cache[dynamic_id] = "skip"
+                                    continue
+                            except Exception as e:
+                                logger.warning(f"[bili_订阅] 记录最大动态id发生了异常: {e}")
+
                         try:
                             int_dynamic_id = int(dynamic_id)
                             parsed_result = await self.parse_dynamic(int_dynamic_id)
@@ -1056,7 +1078,7 @@ class BilibiliParser(BaseParser):
             while len(self._last_dynamic_cache) > max_entries:
                 oldest_key = next(iter(self._last_dynamic_cache))
                 self._last_dynamic_cache.pop(oldest_key)
-                logger.debug(f"数量达到最大 {max_entries}，移除旧纪录: {oldest_key}")
+                logger.warning(f"数量达到最大 {max_entries}，移除旧纪录: {oldest_key}")
 
             with open(self.cache_file, "w", encoding="utf-8") as f:
                 json.dump(self._last_dynamic_cache, f, ensure_ascii=False, indent=4)

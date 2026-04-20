@@ -425,7 +425,16 @@ class MessageSender:
         info_segs = list(preview_segs)
         if dynamic_id:
             dynamic_url = f"https://t.bilibili.com/{dynamic_id}"
-            info_segs.append(Plain(f"链接： {dynamic_url}"))
+            #添加 link判断，若是 result 里已有链接则跳过，没有再添加。getattr 获取 text 属性，若没有再转换 str判断
+            already_has_link = False
+            for seg in info_segs:
+                seg_text = getattr(seg, "text", str(seg))
+                if dynamic_url in seg_text:
+                    already_has_link = True
+                    break
+
+            if not already_has_link:
+                info_segs.append(Plain(f"链接：{dynamic_url}"))
 
         info_chain = MessageChain(info_segs) if info_segs else None
 
