@@ -985,6 +985,20 @@ class BilibiliParser(BaseParser):
                             await self._save_cache()
                             continue
 
+                        #动态id以防止up 删除了某一条动态因滑动窗口设置意外触发将老动态发送出去的问题
+                        if not is_first_init and uid_cache:
+                            try:
+                                # 获取最大 id，若遇到说到的滑动窗口bug意外捕获到老id 会因为比目前记录最大 id小从而跳过不发送
+                                max_cached_id = max([int(k) for k in uid_cache.keys() if str(k).isdigit()], default = 0)
+                                int_dynamic_id = int(dynamic_id)
+
+                                if int_dynamic_id < max_cached_id:
+                                    logger.info(f"[bili_订阅] 发现因删动态出现的滑动窗口获取到的老动态id： {dynamic_id}，已自动跳过不发送")
+                                    uid_cache[dynamic_id] = "skip"
+                                    continue
+                            except Exception as e:
+                                logger.warning(f"[bili_订阅] 记录最大动态id发生了异常: {e}")
+
                         try:
                             int_dynamic_id = int(dynamic_id)
                             parsed_result = await self.parse_dynamic(int_dynamic_id)
@@ -1064,7 +1078,7 @@ class BilibiliParser(BaseParser):
             while len(self._last_dynamic_cache) > max_entries:
                 oldest_key = next(iter(self._last_dynamic_cache))
                 self._last_dynamic_cache.pop(oldest_key)
-                logger.debug(f"数量达到最大 {max_entries}，移除旧纪录: {oldest_key}")
+                logger.warning(f"数量达到最大 {max_entries}，移除旧纪录: {oldest_key}")
 
             with open(self.cache_file, "w", encoding="utf-8") as f:
                 json.dump(self._last_dynamic_cache, f, ensure_ascii=False, indent=4)
