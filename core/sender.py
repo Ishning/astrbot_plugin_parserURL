@@ -429,7 +429,7 @@ class MessageSender:
             already_has_link = False
             for seg in info_segs:
                 seg_text = getattr(seg, "text", str(seg))
-                if dynamic_url in seg_text:
+                if dynamic_id in seg_text:
                     already_has_link = True
                     break
 
