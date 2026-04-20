@@ -324,6 +324,12 @@ class BilibiliParser(BaseParser):
 
     async def _warm_up_cache_loop(self):
         """用于每30min执行一次 warm_up_cache 函数来检查是否有新uid进来，有的话进行处理"""
+
+        if self.sub_map:
+            logger.info(f"[bili_订阅] 当前已加载 {len(self.sub_map)} 个 up uid，开始预加载 up 信息")
+        else:
+            logger.info("[bili_订阅] 当前暂未配置任何 up uid")
+
         while True:
             try:
                 await self.warm_up_cache()
@@ -334,16 +340,18 @@ class BilibiliParser(BaseParser):
 
     async def warm_up_cache(self):
         """用于预加载 get_up_info 函数进行的内容"""
-        import asyncio
         if not self.sub_map:
             return
 
-        logger.info(f"[bili_订阅] 预载加载 {len(self.sub_map)} 个 UP 主的名字缓存")
+        uids_to_fetch = [uid for uid in self.sub_map.keys() if uid not in self.uid_name_cache]
 
-        for uid in list(self.sub_map.keys()):
-            if uid in self.uid_name_cache:
-                continue
+        if not uids_to_fetch:
+            logger.debug(f"[bili_订阅] 目前所有 {len(self.sub_map)} up 状态信息已是最新")
+            return
 
+        logger.info(f"[bili_订阅] 发现 {len(uids_to_fetch)} 个新 up uid，开始预加载 up 信息")
+
+        for uid in uids_to_fetch:
             try:
                 await self.get_up_info(uid)
 
@@ -354,10 +362,10 @@ class BilibiliParser(BaseParser):
                     logger.warning(f"[bili_订阅] 触发错误 -352，风控校验失败。1分钟后再尝试")
                     await asyncio.sleep(60)
                 else:
-                    logger.warning(f"预加载 UID {uid} 失败: {err_msg}")
+                    logger.warning(f"[bili_订阅] 预加载 UID {uid} 失败: {err_msg}")
                 continue
 
-        logger.info("[bili_订阅] 预载加载完成")
+        logger.info("[bili_订阅] 预载加载 up 信息状态完成")
 
     async def get_up_info(self, uid: int) -> str:
         """用户解析获取uid的名字等信息"""
