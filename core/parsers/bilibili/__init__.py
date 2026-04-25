@@ -1000,11 +1000,11 @@ class BilibiliParser(BaseParser):
             else:
                 duration_str = "未知"
 
-            msg_title = "直播已结束"
-            msg_text = f"UP主：{uname}\n标题：{title}\n本次直播时长：{duration_str}"
+            msg_title = f"直播已结束：{title}"
+            msg_text = f"分区：{area_name}\n游戏：{game_name}\n本次直播时长：{duration_str}"
         else:
-            msg_title = "直播已开播"
-            msg_text = f"UP主：{uname}\n标题：{title}\n分区：{area_name}\n游戏：{game_name}"
+            msg_title = f"直播已开始：{title}"
+            msg_text = f"分区：{area_name}\n游戏：{game_name}"
             if cover_url:
                 img_task = self.downloader.download_img(cover_url, headers=self.headers, proxy=self.proxy)
                 contents.append(ImageContent(img_task))
