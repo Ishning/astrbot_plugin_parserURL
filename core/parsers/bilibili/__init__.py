@@ -140,7 +140,18 @@ class BilibiliParser(BaseParser):
                     self._last_dynamic_cache = json.load(f)
                 logger.info(f"[bili_订阅] 已加载状态缓存，目前记录数为: {len(self._last_dynamic_cache)}")
             except Exception as e:
-                logger.error(f"[bili_订阅] 加载失败: {e}")
+                logger.error(f"[bili_订阅] 加载状态缓存失败: {e}")
+
+        #用于处理直播的状态换成
+        self._first_live_check_done = set()
+        self.live_cache_file = self.bili_data_dir / "bili_live_cache.json"
+        self._live_status_cache = {}
+        if self.live_cache_file.exists():
+            try:
+                with open(self.live_cache_file, "r", encoding="utf-8") as f:
+                    self._live_status_cache = json.load(f)
+            except Exception as e:
+                logger.error(f"[bili_订阅] 加载直播缓存失败: {e}")
 
         #解决热重载导致的僵尸任务
         f_old_task=False
@@ -173,6 +184,21 @@ class BilibiliParser(BaseParser):
             self._warmup_task = asyncio.create_task(
                 self._warm_up_cache_loop(),
                 name="task_bili_warm_up_cache_loop"
+            )
+
+        #任务 _subscription_loop_live
+        f_old_live = False
+        for task in asyncio.all_tasks():
+            if task.get_name() == "task_subscription_loop_live":
+                task.cancel()
+                f_old_live = True
+        if f_old_live:
+            logger.info("[bili_订阅] 热重载，已清理旧 task_subscription_loop_live 任务")
+
+        if self.sub_enable:
+            self._warmup_task = asyncio.create_task(
+                self._subscription_loop_live(),
+                name="task_subscription_loop_live"
             )
 
     @handle("b23.tv", r"b23\.tv/[A-Za-z\d\._?%&+\-=/#]+")
@@ -257,6 +283,46 @@ class BilibiliParser(BaseParser):
         """解析图文动态信息"""
         opus_id = int(searched.group("opus_id"))
         return await self.parse_opus(opus_id)
+
+    @handle("find_uid_str_roomid", r"^(?:/find_uid_str_roomid|find_uid_str_roomid)\s+(?P<uids>\d+)$")
+    async def _find_uid_str_roomid(self, searched: Match[str]):
+        from .live import RoomData
+        from bilibili_api.utils.network import Api
+        from typing import Dict
+
+        uids = int(searched.group("uids"))
+
+        API_CONFIG = {
+        "url": "https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids",
+        "method": "GET",
+        "verify": False,
+        "params": {"uids[]": "list<int>: uid"},
+        "comment": "查直播，批量",
+        }
+        params: Dict[str, list[int]] = {"uids[]": [uids]}
+        resp = await Api(**API_CONFIG, no_csrf=True).update_params(**params).result
+        if not isinstance(resp, dict) or not resp:
+            return self.result()
+        live_room = next(iter(resp.values()))
+
+        API_CONFIG_1 = {
+        "url" : "https://api.live.bilibili.com/room/v2/Room/room_id_by_uid",
+        "method": "GET",
+        "verify": False,
+        "params": {"uid[]": "list<int>: uid"},
+        "comment": "通过uid 查 room id",
+        }
+        params_1 : Dict[str, int]={"uid": 67141}
+        resp_1 = await Api(**API_CONFIG_1, no_csrf=True).update_params(**params_1).result
+        if not isinstance(resp_1, dict) or not resp_1:
+            return self.result()
+        live_room1 = next(iter(resp_1.values()))
+
+        # room_info =  LiveRoom(room_display_id=live_room, credential=await self.login.credential)
+        # request_info = await room_info.get_room_info()
+        # print(request_info)
+
+        return self.result(text=str(live_room)+"\n"+str(live_room1))
 
     @handle("parserurl_test_push", r"^(?:/parserurl_test_push|parserurl_test_push)\s+(?P<dyid>\d+)$")
     async def _test_push_manual(self, searched: Match[str]):
@@ -901,6 +967,174 @@ class BilibiliParser(BaseParser):
         logger.debug(f"音频流质量: {audio_stream.audio_quality.name}")
         return video_stream.url, audio_stream.url
 
+    async def _parse_live_info(self, uid: int, room_info: dict, is_end: bool = False):
+        """用于解析直播间信息然后构建 result
+
+        Args:
+            uid int: up uid
+            room_inf dict: 查询接口返回的字典信息
+            is_end bool: 判断是否下播
+        """
+        import time
+
+        room_id = room_info.get("room_id")
+        title = room_info.get("title", "无标题")
+        uname = room_info.get("uname", str(uid))
+        face = room_info.get("face", "")
+        cover_url = room_info.get("cover_from_user", "")
+        area_name = room_info.get("area_name", "未分区")
+        game_name = room_info.get("area_v2_name", "未知游戏")
+        room_url = f"https://live.bilibili.com/{room_id}"
+
+        live_start_ts = room_info.get("live_time", 0)
+
+        author = self.create_author(uname, face)
+        contents = []
+        #计算直播时间，结束时候
+        if is_end:
+            if live_start_ts > 0:
+                duration_sec = int(time.time()) - live_start_ts
+                hours = duration_sec // 3600
+                minutes = (duration_sec % 3600) // 60
+                duration_str = f"{hours}小时{minutes}分钟" if hours > 0 else f"{minutes}分钟"
+            else:
+                duration_str = "未知"
+
+            msg_title = "直播已结束"
+            msg_text = f"UP主：{uname}\n标题：{title}\n本次直播时长：{duration_str}"
+        else:
+            msg_title = "直播已开播"
+            msg_text = f"UP主：{uname}\n标题：{title}\n分区：{area_name}\n游戏：{game_name}"
+            if cover_url:
+                img_task = self.downloader.download_img(cover_url, headers=self.headers, proxy=self.proxy)
+                contents.append(ImageContent(img_task))
+
+        return self.result(
+            title=msg_title,
+            text=msg_text,
+            timestamp=int(time.time()),
+            author=author,
+            contents=contents,
+            url=room_url
+        )
+
+    async def _subscription_loop_live(self):
+        """进行直播间轮询订阅
+           因为 User.get_live_info 接口频繁报错导致使用效果不佳，需要等待上游 api修复
+           现在改用自己通过接口访问轮询
+        """
+        import traceback
+        from bilibili_api.utils.network import Api
+
+        await asyncio.sleep(5.0)
+
+        while True:
+            try:
+                poll_uids = [int(str(uid).strip()) for uid in self.sub_map.keys()]
+                if not poll_uids:
+                    await asyncio.sleep(60.0)
+                    continue
+
+                LIVE_API_CONFIG = {
+                    "url": "https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids",
+                    "method": "GET",
+                    "verify": False,
+                    "params": {"uids[]": "list<int>: up uid"},
+                    "comment": "通过up uid列表获取直播间状态，包含知否在直播、房间号、直播时长信息等",
+                }
+
+                # 将总列表才分查询，避免一次查询过多导致接口报错
+                batch_size = 10
+                for i in range(0, len(poll_uids), batch_size):
+                    batch_uids = poll_uids[i:i + batch_size]
+                    live_params = {"uids[]": batch_uids}
+
+                    try:
+                        resp = await Api(**LIVE_API_CONFIG, no_csrf=True).update_params(**live_params).result
+
+                        if isinstance(resp, dict):
+                            for uid_str, room_info in resp.items():
+                                uid = int(uid_str)
+                                current_status = room_info.get("live_status") #0未播，1直播
+                                cache_key = str(uid)
+
+                                last_cache = self._live_status_cache.get(cache_key, {})
+                                if isinstance(last_cache, int):
+                                    last_status = last_cache
+                                    last_live_time = 0
+                                else:
+                                    last_status = last_cache.get("status", 0)
+                                    last_live_time = last_cache.get("live_time", 0)
+
+                                is_startup = uid not in self._first_live_check_done
+                                action = None
+
+                                #设置状态
+                                if is_startup:
+                                    self._first_live_check_done.add(uid)
+                                    if current_status == 1:
+                                        logger.info(f"[bili_订阅] 发现 up uid {uid} 正在直播")
+                                        action = "start"
+                                else:
+                                    if last_status != 1 and current_status == 1:
+                                        logger.info(f"[bili_订阅] 检测到 up uid {uid} 开播")
+                                        action = "start"
+                                    elif last_status == 1 and current_status != 1:
+                                        logger.info(f"[bili_订阅] 检测到 up uid {uid} 下播")
+                                        action = "end"
+
+                                if action:
+                                    targets = self.sub_map.get(uid) or self.sub_map.get(str(uid)) or {}
+                                    target_groups = targets.get("groups", [])
+                                    target_users = targets.get("users", [])
+
+                                    if target_groups or target_users:
+                                        from ...render import Renderer
+                                        from ...sender import MessageSender
+
+                                        is_end = (action == "end")
+
+                                        #下播，因为可能 live_time 没有了，利用缓存机制计算
+                                        if is_end and last_live_time > 0:
+                                            room_info["live_time"] = last_live_time
+
+                                        live_result = await self._parse_live_info(uid, room_info, is_end=is_end)
+
+                                        renderer = Renderer(self.cfg)
+                                        sender = MessageSender(self.cfg, renderer)
+
+                                        try:
+                                            await sender.send_proactive_msg(
+                                                context=self.cfg.context,
+                                                result=live_result,
+                                                sub_groups=list(target_groups),
+                                                sub_users=list(target_users),
+                                                platforms=self.platforms,
+                                                dynamic_id=None,
+                                                platform_botid=self.platform_botid,
+                                                only_previewCard=self.only_previewCard
+                                            )
+                                        except Exception as e:
+                                            logger.error(f"[bili_订阅] 发送 UP主 {uid} 的推送失败: {e}")
+
+                                self._live_status_cache[cache_key] = {
+                                    "status": current_status,
+                                    "live_time": room_info.get("live_time", 0) if current_status == 1 else 0
+                                }
+
+                    except Exception as e:
+                        logger.warning(f"[bili_订阅] 直播轮询批次 {i//batch_size + 1} 发生异常: {e}")
+
+                    if i + batch_size < len(poll_uids):
+                        await asyncio.sleep(1.0)
+
+                await self._save_live_cache()
+
+            except Exception as e:
+                logger.error(f"[bili_订阅] 直播订阅循环发生异常: {traceback.format_exc()}")
+
+            await asyncio.sleep(float(self.sub_interval) * 60.0)
+
     async def _subscription_loop(self):
         """进行订阅轮询
 
@@ -1072,7 +1306,6 @@ class BilibiliParser(BaseParser):
 
     async def _save_cache(self):
         """将缓存保存到对于data本地数据目录下"""
-        import json
         try:
             max_entries = 100
             while len(self._last_dynamic_cache) > max_entries:
@@ -1085,6 +1318,14 @@ class BilibiliParser(BaseParser):
 
         except Exception as e:
             logger.error(f"保存失败: {e}")
+
+    async def _save_live_cache(self):
+        """将直播状态缓存保存到data本地目录下"""
+        try:
+            with open(self.live_cache_file, "w", encoding="utf-8") as f:
+                json.dump(self._live_status_cache, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            logger.error(f"[bili_订阅] 保存直播缓存失败: {e}")
 
     async def _is_lottery(self, text: str) -> bool:
         """判断文本是否包含了抽奖相关动态"""
