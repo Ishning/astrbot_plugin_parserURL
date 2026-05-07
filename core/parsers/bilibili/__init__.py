@@ -996,7 +996,8 @@ class BilibiliParser(BaseParser):
                 duration_sec = int(time.time()) - live_start_ts
                 hours = duration_sec // 3600
                 minutes = (duration_sec % 3600) // 60
-                duration_str = f"{hours}小时{minutes}分钟" if hours > 0 else f"{minutes}分钟"
+                seconds = duration_sec % 60
+                duration_str = f"{hours}小时{minutes}分钟{seconds}秒" if hours > 0 else f"{minutes}分钟{seconds}秒"
             else:
                 duration_str = "未知"
 
