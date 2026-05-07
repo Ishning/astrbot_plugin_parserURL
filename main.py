@@ -420,6 +420,120 @@ class ParserPlugin(Star):
             logger.exception(f"[bili_订阅] 查询详细订阅失败: {e}")
             yield event.plain_result(f"查询错误: {e}")
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("查询up直播状态")
+    async def check_subscribe_bili_up_live_status(self, event: AstrMessageEvent):
+        """查询已订阅UP主的直播状态"""
+        import time
+
+        try:
+            parser: BilibiliParser = self._get_parser_by_type(BilibiliParser)   # type: ignore
+
+            if not parser.sub_map:
+                yield event.plain_result("当前没有任何B站 up订阅记录")
+                return
+
+            from bilibili_api.utils.network import Api
+
+            poll_uids = [int(str(uid).strip()) for uid in parser.sub_map.keys()]
+
+            if not poll_uids:
+                yield event.plain_result("当前没有任何B站 up订阅记录")
+                return
+
+            #两个独立的列表来分别存放状态，直播和未直播
+            live_lines = []
+            offline_lines = []
+            live_count = 0
+            offline_count = 0
+
+            # 分批查询，避免一次查询过多导致接口报错
+            batch_size = 10
+            for i in range(0, len(poll_uids), batch_size):
+                batch_uids = poll_uids[i:i + batch_size]
+                live_params = {"uids[]": batch_uids}
+
+                try:
+                    LIVE_API_CONFIG = {
+                        "url": "https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids",
+                        "method": "GET",
+                        "verify": False,
+                        "params": {"uids[]": "list<int>: up uid"},
+                        "comment": "通过up uid列表获取直播间状态",
+                    }
+                    resp = await Api(**LIVE_API_CONFIG, no_csrf=True).update_params(**live_params).result
+
+                    if isinstance(resp, dict):
+                        for uid_str, room_info in resp.items():
+                            uid = int(uid_str)
+                            up_name = parser.uid_name_cache.get(uid, f"UID{uid}")
+                            live_status = room_info.get("live_status", 0)
+                            live_start_ts = room_info.get("live_time", 0)
+                            room_id = room_info.get("room_id", "")
+                            title = room_info.get("title", "无标题")
+                            area_name = room_info.get("area_name", "未分区")
+                            game_name = room_info.get("area_v2_name", "未知游戏")
+
+                            if live_status == 1:
+                                if live_start_ts > 0:
+                                    duration_sec = int(time.time()) - live_start_ts
+                                    hours = duration_sec // 3600
+                                    minutes = (duration_sec % 3600) // 60
+                                    seconds = duration_sec % 60
+                                    time_str = f"{hours}小时{minutes}分{seconds}秒" if hours > 0 else f"{minutes}分钟{seconds}秒"
+                                else:
+                                    time_str = "未知"
+
+                                room_url = f"https://live.bilibili.com/{room_id}"
+
+                                live_lines.append(
+                                    f"🔴 {up_name} (uid:{uid})\n"
+                                    f"标题: {title}\n"
+                                    f"分区: {area_name} | 游戏: {game_name}\n"
+                                    f"当前已直播时长: {time_str}\n"
+                                    f"链接: {room_url}"
+                                )
+                                live_count += 1
+                            else:
+                                offline_lines.append(f"- {up_name} (uid:{uid})")
+                                offline_count += 1
+
+                except Exception as e:
+                    logger.warning(f"[bili_订阅] 查询直播状态批次 {i//batch_size + 1} 发生异常: {e}")
+                    yield event.plain_result(f"查询部分UP直播状态失败: {e}")
+                    return
+
+                if i + batch_size < len(poll_uids):
+                    await asyncio.sleep(0.5)
+
+            final_msg = ["B站UP主直播状态查询", "=" * 20, "直播中:"]
+
+            # 正在直播的列表
+            if live_lines:
+                final_msg.extend(live_lines)
+            else:
+                final_msg.append("当前暂无UP主在直播")
+
+            # 未直播的列表
+            if offline_lines:
+                final_msg.append("")
+                final_msg.append("未直播:")
+                final_msg.extend(offline_lines)
+
+            final_msg.append("=" * 20)
+            final_msg.append(f"统计: 直播中 {live_count} 个 | 未播 {offline_count} 个")
+            yield event.plain_result("\n".join(final_msg))
+
+        except ValueError as e:
+            if "BilibiliParser" in str(e):
+                yield event.plain_result("B站相关功能未开启，请检查后台配置是否开启")
+            else:
+                yield event.plain_result(f"错误: {e}")
+
+        except Exception as e:
+            logger.exception(f"[bili_订阅] 查询直播状态失败: {e}")
+            yield event.plain_result(f"查询错误: {e}")
+
     async def save_to_plugin_config(self):
         """将 sub_map 同步到框架的内存配置并调用框架原生保存方法"""
         # 增加一层 asyncio.Lock 异步锁保护
