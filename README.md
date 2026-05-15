@@ -14,7 +14,9 @@ _✨ 链接解析器 ✨_
 </div>
 
 ## 📖 介绍
-项目基于 [astrbot_plugin_parser](https://github.com/Zhalslar/astrbot_plugin_parser) 做了一些修改和优化，解决了使用上的一些问题。修改与更新的`change log` 详情请看[更新日志 v2.0.0开始](./CHANGELOG.md#v200)
+一款基于Astrbot的多媒体解析插件，项目由 [astrbot_plugin_parser](https://github.com/Zhalslar/astrbot_plugin_parser) 而来，修复了错误和解决了使用上的一些问题并扩展了插件新功能。修改与更新的`change log` 详情请看[更新日志 v2.0.0开始](./CHANGELOG.md#v200)
+
+项目将持续维护，有什么新功能欢迎提issue或PR
 
 当前支持的平台和类型：
 
@@ -55,7 +57,12 @@ _✨ 链接解析器 ✨_
 
 ## 💿 安装
 
-直接在astrbot的插件市场搜索astrbot_plugin_parserurl，点击安装，等待完成即可
+- 通过在的插件市场搜索点击安装完成
+- 通过`插件市场-安装插件-从链接安装`填入该项目GitHub链接地址`https://github.com/Ishning/astrbot_plugin_parserURL`安装
+- 通过以下指令进行安装：
+```shell
+plugin i https://github.com/Ishning/astrbot_plugin_parserURL
+```
 
 ## ⚙️ 配置
 
@@ -63,11 +70,16 @@ _✨ 链接解析器 ✨_
 
 ## 🎉 指令
 
-|   指令   |         权限          |        说明        |
-| :------: | :-------------------: |  :---------------: |
-| 开启解析 |      ADMIN            |     开启当前会话的解析功能      |
-| 关闭解析 |      ADMIN            |    关闭当前会话的解析功能      |
-|  blogin  |      ADMIN           |   扫码获取 B 站凭证 |
+| 指令 | 权限 | 说明 | 别名 |
+| :---: | :---: | :---: | :---: |
+| **开启解析** | ADMIN | 开启当前会话的解析功能 | 可在后管理的插件-管理行为自行自定义 |
+| **关闭解析** | ADMIN | 关闭当前会话的解析功能 | 可在后管理的插件-管理行为自行自定义 |
+| **blogin** | ADMIN | 扫码获取 B 站凭证 | `blogin`、`登录b站`，也可在后管理的插件-管理行为自行自定义 |
+| **订阅up** | ADMIN | 订阅B站用户并进行主动推送至相关用户动态群内 | 可在后管理的插件-管理行为自行自定义 |
+| **取消订阅up** | ADMIN | 取消B站用户动态更新主动推送至群内 | 可在后管理的插件-管理行为自行自定义 |
+| **查询订阅up列表** | ADMIN | 查询订阅了哪些B站用户 | 可在后管理的插件-管理行为自行自定义 |
+| **查询订阅up列表详细** | ADMIN | 查询订阅了哪些B站用户带上了发送至哪些人和群 | 可在后管理的插件-管理行为自行自定义 |
+| **查询up直播状态** | ADMIN | 查询订阅的B站用户直播状态 | 可在后管理的插件-管理行为自行自定义 |
 
 ---
 
@@ -126,5 +138,4 @@ _✨ 链接解析器 ✨_
 ---
 
 ## 🎉 致谢
-
-本项目核心代码来自[nonebot-plugin-parser](https://github.com/fllesser/nonebot-plugin-parser)，请前往原仓库给作者点个Star!
+本项目由[astrbot_plugin_parser](https://github.com/Zhalslar/astrbot_plugin_parser)项目发展而来，原项目[astrbot_plugin_parser](https://github.com/Zhalslar/astrbot_plugin_parser)核心代码来自[nonebot-plugin-parser](https://github.com/fllesser/nonebot-plugin-parser)，喜欢的话请前往原仓库给作者分别点个Star!
