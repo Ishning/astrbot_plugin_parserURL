@@ -631,13 +631,10 @@ class BilibiliParser(BaseParser):
         from .opus import ImageNode, OpusItem
 
         opus_info = await bili_opus.get_info()
-        # import json
-        # with open("bili_debug.json", "w", encoding="utf-8") as f:
-        #     json.dump(opus_info, f, ensure_ascii=False, indent=2)
 
         if not isinstance(opus_info, dict):
             raise ParseException("获取图文动态信息失败")
-        
+
         # 结构体
         raw_title = None
         try:
@@ -670,36 +667,40 @@ class BilibiliParser(BaseParser):
             raw_cover_url = await self.__cover_from_json(opus_info)
             if not raw_cover_url:
                 raw_cover_url = await self._get_web_cover(bili_opus)
-                logger.info(f"获取封面url: {raw_cover_url}")
-        
+
         #加上大小限制免得拿到原图过大
         if raw_cover_url:
             if raw_cover_url.startswith("//"):
                 raw_cover_url = f"https:{raw_cover_url}"
             if "@" not in raw_cover_url:
                 raw_cover_url += "@700w.webp"
-
-        #下载封面
-        cover_task = None
-        if raw_cover_url:
-            cover_task = self.downloader.download_img(
-                raw_cover_url, headers=self.headers, proxy=self.proxy
-            )
+                logger.info(f"获取封面url: {raw_cover_url}")
 
         # 转换为结构体
         opus_data = convert(opus_info, OpusItem)
         author = self.create_author(*opus_data.name_avatar)
 
-        # 按顺序处理图文内容
+        # 准备contests和文本
         contents: list[MediaContent] = []
         current_text = ""
-        full_text = "" #用于全局的提取,因为有些不在一起可能会分开，不然 current_text可能会清空导致提取不到
+        full_text = ""
 
+        # 封面
+        if raw_cover_url:
+            contents.insert(0, self.create_graphics_content(raw_cover_url, text=""))
+            # contents.append(
+            #     self.create_graphics_content(raw_cover_url, text="")
+            # )
+
+        #处理正文
         for node in opus_data.gen_text_img():
             if isinstance(node, ImageNode):
+                img_url = node.url
+                if img_url.startswith("//"):
+                    img_url = f"https:{img_url}"
                 contents.append(
                     self.create_graphics_content(
-                        node.url, current_text.strip(), node.alt
+                        img_url, current_text.strip(), node.alt
                     )
                 )
                 current_text = ""
@@ -727,7 +728,7 @@ class BilibiliParser(BaseParser):
             title=final_title,
             author=author,
             timestamp=opus_data.timestamp,
-            cover=cover_task, #增加封面
+            cover=None,
             contents=contents,
             text=current_text.strip(),
             url=opus_url
@@ -817,11 +818,11 @@ class BilibiliParser(BaseParser):
                         except: pass
 
                     # 匹配 b-img__inner 字段
-                    img_match = re.search(r'b-img__inner.*?src="([^"]+?hdslb\.com/bfs/new_dyn/[^"]+)"', html_text, re.S)
-                    if img_match: return img_match.group(1)
+                    # img_match = re.search(r'b-img__inner.*?src="([^"]+?hdslb\.com/bfs/new_dyn/[^"]+)"', html_text, re.S)
+                    # if img_match: return img_match.group(1)
 
                     # 上面要是都找不到直接正则匹配图片域名,比较的暴力匹配╰(*°▽°*)╯
-                    brute_match = re.search(r'//i0\.hdslb\.com/bfs/new_dyn/[a-zA-Z0-9_\.]+', html_text)
+                    brute_match = re.search(r'//i[0-9]\.hdslb\.com/bfs/new_dyn/[a-zA-Z0-9_\.\-]+', html_text)
                     if brute_match: return brute_match.group(0)
                     
         except Exception as e:
@@ -1178,15 +1179,36 @@ class BilibiliParser(BaseParser):
                         await asyncio.sleep(float(self.sub_delay))
                         continue
 
-                    #重新调整逻辑
+                    #重新调整逻辑，改用时间戳
+                    cache_entry = self._last_dynamic_cache.get(cache_key)
                     is_first_init = False
-                    if cache_key not in self._last_dynamic_cache:
-                        self._last_dynamic_cache[cache_key] = {}
+                    if not cache_entry:
+                        self._last_dynamic_cache[cache_key] = {
+                            "is_first_init": 1,
+                            "dynamics": {}
+                        }
                         is_first_init = True
-                    elif isinstance(self._last_dynamic_cache[cache_key], str):
-                        self._last_dynamic_cache[cache_key] = {self._last_dynamic_cache[cache_key]: "sent"}
+                    else:
+                        # 兼容旧版本缓存数据结构
+                        if isinstance(cache_entry, str):
+                            self._last_dynamic_cache[cache_key] = {
+                                "is_first_init": 0,
+                                "dynamics": {cache_entry: {"timestamp": 0, "status": "sent"}}
+                            }
+                        elif "is_first_init" not in cache_entry:
+                            new_dyn_dict = {}
+                            for k, v in cache_entry.items():
+                                new_dyn_dict[str(k)] = {"timestamp": 0, "status": v}
+                            self._last_dynamic_cache[cache_key] = {
+                                "is_first_init": 0,
+                                "dynamics": new_dyn_dict
+                            }
 
-                    uid_cache = self._last_dynamic_cache[cache_key]
+                        # 判断当前是否为第一次记录
+                        is_first_init = self._last_dynamic_cache[cache_key].get("is_first_init") == 1
+
+                    uid_cache_full = self._last_dynamic_cache[cache_key]
+                    uid_cache_dyn = uid_cache_full["dynamics"]
 
                     #寻找非顶置的最新动态
                     recent_items = []
@@ -1205,34 +1227,43 @@ class BilibiliParser(BaseParser):
                     #让旧的在前面倒叙发送
                     recent_items.reverse()
 
+                    #滑动窗口动态处理基于时间错非原来的动态id
                     for newest_item in recent_items:
-                        # 获取当前的，设置 new状态
                         dynamic_id = str(newest_item["id_str"])
-                        status = uid_cache.get(dynamic_id, "new")
-                        
-                        # 发送，忽略两种跳过
+                        try:
+                            pub_ts = int(newest_item["modules"]["module_author"]["pub_ts"])
+                        except Exception:
+                            pub_ts = 0
+
+                        # 获取当前动态的状态
+                        dyn_info = uid_cache_dyn.get(dynamic_id, {})
+                        status = dyn_info.get("status", "new")
+
+                        # 发送过或已跳过的忽略
                         if status == "sent" or status == "skip":
                             continue
 
-                        #第一次使用默认都当发送过
+                        # 第一次使用默认都当发送过
                         if is_first_init:
-                            uid_cache[dynamic_id] = "sent"
+                            uid_cache_dyn[dynamic_id] = {"timestamp": pub_ts, "status": "sent"}
+                            uid_cache_full["is_first_init"] = 0  # 标记后续不再是首次
                             await self._save_cache()
                             continue
 
-                        #动态id以防止up 删除了某一条动态因滑动窗口设置意外触发将老动态发送出去的问题
-                        if not is_first_init and uid_cache:
+                        if not is_first_init and uid_cache_dyn:
                             try:
-                                # 获取最大 id，若遇到说到的滑动窗口bug意外捕获到老id 会因为比目前记录最大 id小从而跳过不发送
-                                max_cached_id = max([int(k) for k in uid_cache.keys() if str(k).isdigit()], default = 0)
-                                int_dynamic_id = int(dynamic_id)
+                                max_cached_ts = max(
+                                    [v.get("timestamp", 0) for v in uid_cache_dyn.values() if isinstance(v, dict)],
+                                    default=0
+                                )
 
-                                if int_dynamic_id < max_cached_id:
-                                    logger.info(f"[bili_订阅] 发现因删动态出现的滑动窗口获取到的老动态id： {dynamic_id}，已自动跳过不发送")
-                                    uid_cache[dynamic_id] = "skip"
+                                # 如果当前动态时间戳比缓存里最新的时间戳要旧，则判定为历史删减暴露出的老动态
+                                if pub_ts > 0 and max_cached_ts > 0 and pub_ts < max_cached_ts:
+                                    logger.info(f"[bili_订阅] 发现因删动态获取到老动态id：{dynamic_id} (发布时间落后于历史记录)，已自动跳过不发送")
+                                    uid_cache_dyn[dynamic_id] = {"timestamp": pub_ts, "status": "skip"}
                                     continue
                             except Exception as e:
-                                logger.warning(f"[bili_订阅] 记录最大动态id发生了异常: {e}")
+                                logger.warning(f"[bili_订阅] 记录最大动态时间戳发生了异常: {e}")
 
                         try:
                             int_dynamic_id = int(dynamic_id)
@@ -1244,7 +1275,7 @@ class BilibiliParser(BaseParser):
                                     _result_text = f"{parsed_result.header or ''} {parsed_result.text or ''}"
                                     if await self._is_lottery(_result_text):
                                         logger.info(f"[bili订阅] 动态 {dynamic_id} 确认为抽奖动态将过滤不推送")
-                                        uid_cache[dynamic_id] = "skip"
+                                        uid_cache_dyn[dynamic_id] = {"timestamp": pub_ts, "status": "skip"}
                                         await self._save_cache()
                                         continue
 
@@ -1264,10 +1295,11 @@ class BilibiliParser(BaseParser):
                                         platform_botid=self.platform_botid,
                                         only_previewCard=self.only_previewCard
                                     )
-                                uid_cache[dynamic_id] = "sent"
+                                # 成功发送
+                                uid_cache_dyn[dynamic_id] = {"timestamp": pub_ts, "status": "sent"}
 
                         except Exception as e:
-                            #失败重试
+                            # 失败重试
                             max_retries = 3
 
                             if status == "new":
@@ -1283,19 +1315,20 @@ class BilibiliParser(BaseParser):
                             current_fail_count += 1
 
                             if current_fail_count >= max_retries:
-                                uid_cache[dynamic_id] = "sent"
+                                uid_cache_dyn[dynamic_id] = {"timestamp": pub_ts, "status": "sent"}
                                 logger.error(f"[bili_订阅] 动态 {dynamic_id} 连续失败 {max_retries} 次，放弃发送")
                             else:
-                                uid_cache[dynamic_id] = f"fail_{current_fail_count}"
+                                uid_cache_dyn[dynamic_id] = {"timestamp": pub_ts, "status": f"fail_{current_fail_count}"}
                                 logger.warning(f"[bili_订阅] 动态 {dynamic_id} 第 {current_fail_count} 次处理失败: {e}")
 
                         await self._save_cache()
                         await asyncio.sleep(1.0)
 
-                    if len(uid_cache) > 10:
-                        keys = list(uid_cache.keys())
+                    #清理缓存，uid保留最多10条动态id的记录
+                    if len(uid_cache_dyn) > 10:
+                        keys = list(uid_cache_dyn.keys())
                         for k in keys[:-10]:
-                            uid_cache.pop(k, None)
+                            uid_cache_dyn.pop(k, None)
                         await self._save_cache()
 
                     await asyncio.sleep(float(self.sub_delay))
