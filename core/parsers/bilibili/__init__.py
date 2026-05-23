@@ -631,13 +631,10 @@ class BilibiliParser(BaseParser):
         from .opus import ImageNode, OpusItem
 
         opus_info = await bili_opus.get_info()
-        # import json
-        # with open("bili_debug.json", "w", encoding="utf-8") as f:
-        #     json.dump(opus_info, f, ensure_ascii=False, indent=2)
 
         if not isinstance(opus_info, dict):
             raise ParseException("获取图文动态信息失败")
-        
+
         # 结构体
         raw_title = None
         try:
@@ -670,36 +667,40 @@ class BilibiliParser(BaseParser):
             raw_cover_url = await self.__cover_from_json(opus_info)
             if not raw_cover_url:
                 raw_cover_url = await self._get_web_cover(bili_opus)
-                logger.info(f"获取封面url: {raw_cover_url}")
-        
+
         #加上大小限制免得拿到原图过大
         if raw_cover_url:
             if raw_cover_url.startswith("//"):
                 raw_cover_url = f"https:{raw_cover_url}"
             if "@" not in raw_cover_url:
                 raw_cover_url += "@700w.webp"
-
-        #下载封面
-        cover_task = None
-        if raw_cover_url:
-            cover_task = self.downloader.download_img(
-                raw_cover_url, headers=self.headers, proxy=self.proxy
-            )
+                logger.info(f"获取封面url: {raw_cover_url}")
 
         # 转换为结构体
         opus_data = convert(opus_info, OpusItem)
         author = self.create_author(*opus_data.name_avatar)
 
-        # 按顺序处理图文内容
+        # 准备contests和文本
         contents: list[MediaContent] = []
         current_text = ""
-        full_text = "" #用于全局的提取,因为有些不在一起可能会分开，不然 current_text可能会清空导致提取不到
+        full_text = ""
 
+        # 封面
+        if raw_cover_url:
+            contents.insert(0, self.create_graphics_content(raw_cover_url, text=""))
+            # contents.append(
+            #     self.create_graphics_content(raw_cover_url, text="")
+            # )
+
+        #处理正文
         for node in opus_data.gen_text_img():
             if isinstance(node, ImageNode):
+                img_url = node.url
+                if img_url.startswith("//"):
+                    img_url = f"https:{img_url}"
                 contents.append(
                     self.create_graphics_content(
-                        node.url, current_text.strip(), node.alt
+                        img_url, current_text.strip(), node.alt
                     )
                 )
                 current_text = ""
@@ -727,7 +728,7 @@ class BilibiliParser(BaseParser):
             title=final_title,
             author=author,
             timestamp=opus_data.timestamp,
-            cover=cover_task, #增加封面
+            cover=None,
             contents=contents,
             text=current_text.strip(),
             url=opus_url
@@ -817,11 +818,11 @@ class BilibiliParser(BaseParser):
                         except: pass
 
                     # 匹配 b-img__inner 字段
-                    img_match = re.search(r'b-img__inner.*?src="([^"]+?hdslb\.com/bfs/new_dyn/[^"]+)"', html_text, re.S)
-                    if img_match: return img_match.group(1)
+                    # img_match = re.search(r'b-img__inner.*?src="([^"]+?hdslb\.com/bfs/new_dyn/[^"]+)"', html_text, re.S)
+                    # if img_match: return img_match.group(1)
 
                     # 上面要是都找不到直接正则匹配图片域名,比较的暴力匹配╰(*°▽°*)╯
-                    brute_match = re.search(r'//i0\.hdslb\.com/bfs/new_dyn/[a-zA-Z0-9_\.]+', html_text)
+                    brute_match = re.search(r'//i[0-9]\.hdslb\.com/bfs/new_dyn/[a-zA-Z0-9_\.\-]+', html_text)
                     if brute_match: return brute_match.group(0)
                     
         except Exception as e:
