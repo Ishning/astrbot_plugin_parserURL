@@ -155,8 +155,10 @@ class EmojiLikeArbiter:
         try:
             resp = await bot.fetch_emoji_like(
                 message_id=message_id,
-                emojiId=str(emoji_id),
-                emojiType=emoji_type,
+                emojiId=str(emoji_id),  # OneBot
+                emojiType=emoji_type,   # OneBot
+                emoji_id=str(emoji_id), # LLBot
+                count=20,               # LLBot（默认20）
             )
         except Exception as e:
             # 增加logger
