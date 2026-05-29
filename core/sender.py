@@ -173,7 +173,7 @@ class MessageSender:
             try:
                 path: Path = await cont.get_path()
             except SizeLimitException:
-                segs.append(Plain("此项媒体超过大小限制\n"))
+                logger.warning(f"此媒体超过设置的大小限制，已跳过发送。若需要发送请在后台配置修改‘整资源最大大小’配置")
                 continue
             except DownloadException:
                 if self.cfg.show_download_fail_tip:
