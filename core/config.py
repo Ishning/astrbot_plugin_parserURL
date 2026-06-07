@@ -155,7 +155,7 @@ class ParserItem(ConfigNode):
     cookies: str | None
     show_body_text: bool | None
     video_send_mode: str | None
-    video_codecs: str | None
+    video_codecs_list: list[str] | None
     video_quality: str | None
 
     #bilibili订阅相关，后续有其他可以再添加
