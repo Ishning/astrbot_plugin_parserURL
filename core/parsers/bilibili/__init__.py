@@ -47,9 +47,14 @@ class BilibiliParser(BaseParser):
         self.video_quality = getattr(
             VideoQuality, str(self.mycfg.video_quality).upper(), VideoQuality._720P
         )
-        self.video_codecs = getattr(
-            VideoCodecs, str(self.mycfg.video_codecs).upper(), VideoCodecs.AVC
-        )
+        # 修改为读取配置列表，并且做一些兼容性处理
+        raw_codecs = getattr(self.mycfg, "video_codecs_list", ["AVC", "AV1", "HEV"])
+        if not raw_codecs:
+            raw_codecs = ["AVC", "AV1", "HEV"]
+        elif isinstance(raw_codecs, str):
+            raw_codecs = [c.strip() for c in raw_codecs.split(",")]
+
+        self.codec_priority_list = [str(c).upper() for c in raw_codecs]
 
         self.login = BilibiliLogin(config)
 
@@ -488,13 +493,18 @@ class BilibiliParser(BaseParser):
         page_info = video_info.extract_info_with_page(page_num)
 
         # 获取 AI 总结
+        ai_summary = ""
         if self.login._credential:
-            cid = await video.get_cid(page_info.index)
-            ai_conclusion = await video.get_ai_conclusion(cid)
-            ai_conclusion = convert(ai_conclusion, AIConclusion)
-            ai_summary = ai_conclusion.summary
+            try:
+                cid = await video.get_cid(page_info.index)
+                ai_conclusion = await video.get_ai_conclusion(cid)
+                ai_conclusion = convert(ai_conclusion, AIConclusion)
+                ai_summary = ai_conclusion.summary
+            except Exception as e:
+                logger.warning(f"获取视频 AI 总结失败 (BVID: {video_info.bvid}): {e}")
+                ai_summary = "暂无 AI 总结或获取失败，可能哔哩哔哩 cookie 未配置或失效"
         else:
-            ai_summary: str = "哔哩哔哩 cookie 未配置或失效, 无法使用 AI 总结"
+            ai_summary = "哔哩哔哩 cookie 未配置或失效, 无法使用 AI 总结"
 
         url = f"https://bilibili.com/{video_info.bvid}"
         url += f"?p={page_info.index + 1}" if page_info.index > 0 else ""
@@ -930,6 +940,7 @@ class BilibiliParser(BaseParser):
         page_index: int = 0,
     ) -> tuple[str, str | None]:
         """解析视频下载链接
+           增加多编码回退与优先级排序机制
 
         Args:
             bvid (str | None): bvid
@@ -937,36 +948,77 @@ class BilibiliParser(BaseParser):
             page_index (int): 页索引 = 页码 - 1
         """
 
-        from bilibili_api.video import (
-            AudioStreamDownloadURL,
-            VideoDownloadURLDataDetecter,
-            VideoStreamDownloadURL,
-        )
+        # from bilibili_api.video import (
+        #     AudioStreamDownloadURL,
+        #     VideoDownloadURLDataDetecter,
+        #     VideoStreamDownloadURL,
+        # )
+
+        from bilibili_api.video import VideoCodecs
 
         if video is None:
             video = await self._get_video(bvid=bvid, avid=avid)
 
-        # 获取下载数据
         download_url_data = await video.get_download_url(page_index=page_index)
-        detecter = VideoDownloadURLDataDetecter(download_url_data)
-        streams = detecter.detect_best_streams(
-            video_max_quality=self.video_quality,
-            codecs=[self.video_codecs],
-            no_dolby_video=True,
-            no_hdr=True,
-        )
-        video_stream = streams[0]
-        if not isinstance(video_stream, VideoStreamDownloadURL):
-            raise DownloadException("未找到可下载的视频流")
-        logger.debug(
-            f"视频流质量: {video_stream.video_quality.name}, 编码: {video_stream.video_codecs}"
-        )
+        target_quality_id = getattr(self.video_quality, "value", 64)
 
-        audio_stream = streams[1]
-        if not isinstance(audio_stream, AudioStreamDownloadURL):
-            return video_stream.url, None
-        logger.debug(f"音频流质量: {audio_stream.audio_quality.name}")
-        return video_stream.url, audio_stream.url
+        codec_scores = {}
+        score = len(self.codec_priority_list)
+        for codec_name in self.codec_priority_list:
+            # 从 bilibili_api.video.VideoCodecs 获取对应的枚举值
+            enum_obj = getattr(VideoCodecs, codec_name, None)
+            if enum_obj and hasattr(enum_obj, "value"):
+                cid = enum_obj.value
+                if cid not in codec_scores:
+                    codec_scores[cid] = score
+            score -= 1  # 列表越靠前，分数越高
+
+        dash = download_url_data.get("dash", {})
+        if dash:
+            videos = dash.get("video", [])
+            audios = dash.get("audio", [])
+            if not videos:
+                raise DownloadException("获取到的 DASH 视频流为空")
+
+            valid_videos = [
+                v for v in videos
+                # if v.get("id", 0) <= target_quality_id and v.get("id", 0) not in (125, 126) # 去掉超过设定最高画质的流，以及杜比视界(126)/HDR(125)
+                if v.get("id", 0) <= target_quality_id
+            ]
+            if not valid_videos:
+                valid_videos = videos
+
+            # 排序：先选画质，再编码
+            valid_videos.sort(
+                key=lambda x: (
+                    x.get("id", 0),
+                    codec_scores.get(x.get("codecid", 0), 0)
+                ),
+                reverse=True
+            )
+
+            best_video_url = valid_videos[0].get("base_url") or valid_videos[0].get("url")
+
+            best_audio_url = None
+            if audios:
+                audios.sort(key=lambda x: x.get("id", 0), reverse=True)
+                best_audio_url = audios[0].get("base_url") or audios[0].get("url")
+
+            if not best_video_url:
+                raise DownloadException("从 DASH 中提取底层视频 URL 失败")
+
+            logger.info(
+                f"选择视频流 -> 画质ID: {valid_videos[0].get('id')}, "
+                f"编码ID: {valid_videos[0].get('codecid')}, "
+                f"当前编码得分: {codec_scores.get(valid_videos[0].get('codecid', 0), 0)}"
+            )
+            return best_video_url, best_audio_url
+
+        durls = download_url_data.get("durl", [])
+        if durls:
+            return durls[0].get("url"), None
+
+        raise DownloadException("解析视频下载链接失败，API 未返回有效的 DASH 或 DURL 数据")
 
     async def _parse_live_info(self, uid: int, room_info: dict, is_end: bool = False):
         """用于解析直播间信息然后构建 result

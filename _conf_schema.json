@@ -212,16 +212,20 @@
                         },
                         "default": 5
                     },
-                    "video_codecs": {
+                    "video_codecs_list": {
                         "description": "B站视频编码",
-                        "hint": "优先下载的编码类型，可选：AVC、AV1、HEV。推荐用兼容性较好的AVC",
-                        "type": "string",
+                        "hint": "优先下载的编码类型，可自选：AVC、AV1、HEV。若遇到失败则会依次使用其它编码尝试下载。默认全选",
+                        "type": "list",
                         "options": [
                             "AVC",
                             "AV1",
                             "HEV"
                         ],
-                        "default": "AVC"
+                        "default": [
+                            "AVC",
+                            "AV1",
+                            "HEV"
+                        ]
                     },
                     "video_quality": {
                         "description": "B站视频分辨率",
