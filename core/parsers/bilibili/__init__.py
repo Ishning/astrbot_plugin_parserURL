@@ -502,9 +502,9 @@ class BilibiliParser(BaseParser):
                 ai_summary = ai_conclusion.summary
             except Exception as e:
                 logger.warning(f"获取视频 AI 总结失败 (BVID: {video_info.bvid}): {e}")
-                ai_summary = "暂无 AI 总结或获取失败"
+                ai_summary = "暂无 AI 总结或获取失败，可能哔哩哔哩 cookie 未配置或失效"
         else:
-            ai_summary = "哔哩哔哩 cookie 未配置, 无法获取 AI 总结"
+            ai_summary = "哔哩哔哩 cookie 未配置或失效, 无法使用 AI 总结"
 
         url = f"https://bilibili.com/{video_info.bvid}"
         url += f"?p={page_info.index + 1}" if page_info.index > 0 else ""
