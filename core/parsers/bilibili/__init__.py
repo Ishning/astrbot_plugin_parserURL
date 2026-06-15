@@ -954,7 +954,7 @@ class BilibiliParser(BaseParser):
         #     VideoStreamDownloadURL,
         # )
 
-        from bilibili_api.video import VideoCodecs
+        from bilibili_api.video import VideoCodecs, VideoQuality, AudioQuality
 
         if video is None:
             video = await self._get_video(bvid=bvid, avid=avid)
@@ -962,16 +962,25 @@ class BilibiliParser(BaseParser):
         download_url_data = await video.get_download_url(page_index=page_index)
         target_quality_id = getattr(self.video_quality, "value", 64)
 
+        # 获取bili api库的画质和音质的反查字典
+        all_quality_map = {e.value: e.name.lstrip("_") for e in VideoQuality}
+        all_audio_map = {e.value: e.name.lstrip("_") for e in AudioQuality}
+
         codec_scores = {}
         score = len(self.codec_priority_list)
         for codec_name in self.codec_priority_list:
-            # 从 bilibili_api.video.VideoCodecs 获取对应的枚举值
-            enum_obj = getattr(VideoCodecs, codec_name, None)
-            if enum_obj and hasattr(enum_obj, "value"):
-                cid = enum_obj.value
-                if cid not in codec_scores:
-                    codec_scores[cid] = score
+            codec_scores[codec_name.upper()] = score
             score -= 1  # 列表越靠前，分数越高
+
+        def get_codec_info(v_data: dict) -> tuple[str, int]:
+            """
+            使用视频流字典并返回匹配到的编码名称和该编码的得分
+            """
+            codec_str = v_data.get("codecs", "")
+            for val in VideoCodecs:
+                if val.value in codec_str:
+                    return val.name, codec_scores.get(val.name, 0)
+            return "未知编码", 0
 
         dash = download_url_data.get("dash", {})
         if dash:
@@ -988,29 +997,46 @@ class BilibiliParser(BaseParser):
             if not valid_videos:
                 valid_videos = videos
 
-            # 排序：先选画质，再编码
+            # 排序：先选画质，再编码的分数
             valid_videos.sort(
                 key=lambda x: (
                     x.get("id", 0),
-                    codec_scores.get(x.get("codecid", 0), 0)
+                    get_codec_info(x)[1]
                 ),
                 reverse=True
             )
 
-            best_video_url = valid_videos[0].get("base_url") or valid_videos[0].get("url")
+            best_video = valid_videos[0]
+            best_video_url = best_video.get("base_url") or best_video.get("url")
 
+            # 获取音频信息
             best_audio_url = None
+            best_audio_id = 0
             if audios:
                 audios.sort(key=lambda x: x.get("id", 0), reverse=True)
-                best_audio_url = audios[0].get("base_url") or audios[0].get("url")
+                best_audio = audios[0]
+                best_audio_url = best_audio.get("base_url") or best_audio.get("url")
+                best_audio_id = best_audio.get("id", 0)
 
             if not best_video_url:
                 raise DownloadException("从 DASH 中提取底层视频 URL 失败")
 
+            # 获取名称
+            best_quality_id = best_video.get("id", 0)
+            quality_display_name = all_quality_map.get(best_quality_id, "未知画质")
+            codec_display_name, codec_final_score = get_codec_info(best_video)
+
+            # 判断是否有音频流
+            if best_audio_id > 0:
+                audio_display_name = all_audio_map.get(best_audio_id, "未知音质")
+            else:
+                audio_display_name = "无音频流"
+
             logger.info(
-                f"选择视频流 -> 画质ID: {valid_videos[0].get('id')}, "
-                f"编码ID: {valid_videos[0].get('codecid')}, "
-                f"当前编码得分: {codec_scores.get(valid_videos[0].get('codecid', 0), 0)}"
+                f"选择视频流 -> 画质: {quality_display_name} (ID: {best_quality_id}), "
+                f"视频编码: {codec_display_name} (详细: {best_video.get('codecs', '无')}), "
+                f"音质: {audio_display_name} (ID: {best_audio_id}), "
+                f"最终编码得分: {codec_final_score}"
             )
             return best_video_url, best_audio_url
 
