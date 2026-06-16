@@ -118,8 +118,8 @@
 - 新增 bilibli 专栏预览卡片里增加文章的封面图效果
 
 效果:  
-<img src="./docs/images/chanlogv212_1.png" width=auto height="350">
-<img src="./docs/images/chanlogv212_2.png" width=auto height="350">
+<img src="https://github.com/user-attachments/assets/c89d9607-33e4-4dc8-a65b-808e68a2d06c" width=auto height="350">
+<img src="https://github.com/user-attachments/assets/b811d8dd-dd68-4274-8821-546315eb9753" width=auto height="350">
 
 ## v2.1.1
 ### 更新与修复
@@ -127,8 +127,8 @@
 - 修复了 bilibli 动态预览卡片因为多图未能正确渲染多图的问题
 
 对比:  
-<img src="./docs/images/chanlogv211_1.png" width=auto height="350">
-<img src="./docs/images/chanlogv211_2.png" width=auto height="350">
+<img src="https://github.com/user-attachments/assets/38f0b9de-64c5-4e8a-9fde-370cf6f58ed2" width="auto" height="350" alt="Image" >
+<img src="https://github.com/user-attachments/assets/a936047c-9a0f-409c-abcb-b30f74d40b22" width=auto height="350" alt="Image" >
 
 ## v2.1.0
 ### 更新与修复
