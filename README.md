@@ -1,11 +1,12 @@
 
 <div align="center">
 
-![:name](https://count.getloli.com/@astrbot_plugin_parser?name=astrbot_plugin_parser&theme=minecraft&padding=6&offset=0&align=top&scale=1&pixelated=1&darkmode=auto)
+![:name](https://count.getloli.com/@astrbot_plugin_parserURL?name=astrbot_plugin_parserURL&theme=miku&padding=7&offset=0&align=top&scale=1&pixelated=1&darkmode=auto)
 
 # astrbot_plugin_parserURL
 
-_✨ 链接解析器 ✨_  
+_✨ 多链接解析器，支持订阅主动消息发送(具体支持平台查看下面说明) ✨_
+
 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
@@ -14,7 +15,9 @@ _✨ 链接解析器 ✨_
 </div>
 
 ## 📖 介绍
-一款基于Astrbot的多媒体解析插件，项目由 [astrbot_plugin_parser](https://github.com/Zhalslar/astrbot_plugin_parser) 而来，修复了错误和解决了使用上的一些问题并扩展了插件新功能。修改与更新的`change log` 详情请看[更新日志 v2.0.0开始](./CHANGELOG.md#v200)
+一款适用于Astrbot的多媒体解析插件并支持平台订阅相关用户并主动推送最新消息
+
+修改与更新的`change log` 详情请看[更新日志 v2.0.0开始](./CHANGELOG.md#v200)
 
 项目将持续维护，有什么新功能欢迎提issue或PR
 
@@ -57,7 +60,6 @@ _✨ 链接解析器 ✨_
 
 ## 💿 安装
 
-- 通过在的插件市场搜索点击安装完成
 - 通过`插件市场-安装插件-从链接安装`填入该项目GitHub链接地址`https://github.com/Ishning/astrbot_plugin_parserURL`安装
 - 通过以下指令进行安装：
 ```shell
