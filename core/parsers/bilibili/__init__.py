@@ -814,7 +814,7 @@ class BilibiliParser(BaseParser):
                 proxy_url = getattr(self, "proxy", None)
                 req_headers = getattr(self, "headers", {})
                 
-                async with session.get(opus_url, headers=req_headers, proxy=proxy_url, timeout=5.0) as resp:
+                async with session.get(opus_url, headers=req_headers, proxy=proxy_url, timeout=aiohttp.ClientTimeout(total=5.0)) as resp:
                     html_text = await resp.text()
                     
                     # 找寻 dom window.__INITIAL_STATE__
