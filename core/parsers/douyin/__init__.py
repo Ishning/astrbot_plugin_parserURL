@@ -82,11 +82,19 @@ class DouyinParser(BaseParser):
     def _build_m_douyin_url(ty: str, vid: str) -> str:
         return f"https://m.douyin.com/share/{ty}/{vid}"
 
-    async def parse_with_redirect(self, url: str) -> "ParseResult":
+    async def parse_with_redirect(
+        self,
+        url: str,
+        headers: dict[str, str] | None = None,
+    ) -> "ParseResult":
         """先重定向再解析，并更新 cookies"""
         logger.debug(f"[抖音] 短链重定向请求: {url}")
+
+        # 如果传入了 headers 就用传入的，否则默认使用自身的 ios_headers
+        request_headers = headers or self.ios_headers
+
         async with self.session.get(
-            url, headers=self.ios_headers, allow_redirects=False, ssl=False
+            url, headers=request_headers, allow_redirects=False, ssl=False
         ) as resp:
             logger.debug(f"[抖音] 短链重定向响应状态码: {resp.status}")
             # 从响应中提取 Set-Cookie 并更新
