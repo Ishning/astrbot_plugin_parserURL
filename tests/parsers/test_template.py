@@ -21,13 +21,13 @@ if str(plugin_root) not in sys.path:
 if str(plugins_dir) not in sys.path:
     sys.path.insert(0, str(plugins_dir))
 
-# 1: 替换为你要测试的真实 Parser 和引用的库类型
+# 1: 替换为你要测试的实际 Parser，type: ignore 可去除
 try:
-    from astrbot_plugin_parserURL.core.parsers.YOUR_PLATFORM import YourPlatformParser
-    from astrbot_plugin_parserURL.core.base import ParseException
+    from astrbot_plugin_parserURL.core.parsers.YOUR_PLATFORM import YourPlatformParser # type: ignore
+    from astrbot_plugin_parserURL.core.base import ParseException # type: ignore
 except ModuleNotFoundError:
-    from core.parsers.YOUR_PLATFORM import YourPlatformParser
-    from core.base import ParseException
+    from core.parsers.YOUR_PLATFORM import YourPlatformParser # type: ignore
+    from core.base import ParseException # type: ignore
 
 # ==========================================
 # 核心 Fixtures (提供极其干净的测试环境)
