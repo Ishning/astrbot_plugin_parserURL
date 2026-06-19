@@ -1,4 +1,10 @@
 # 更新日志
+## v2.5.0
+### 更新与修复
+- 引入 tests 测试，后续平台解析可参考 `tests/parsers/test_template.py` 模板文件进行扩展
+- 支持抖音SSR免签
+- 修复了bilibili opus的 pub_ts 参数问题，系上游B站返回数据格式变化。现已做了兼容处理
+
 ## v2.4.6
 ### 更新与修复
 - 修复和优化 bili/extract_download_urls 方法排序评分的错误问题以及日志显示，
