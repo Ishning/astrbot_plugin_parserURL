@@ -27,7 +27,7 @@ class Author(Struct):
     face: str
     mid: int
     pub_time: str
-    pub_ts: int
+    pub_ts: int | str  # 修复: B站返回字符串格式的时间戳问题
 
 
 class Image(Struct):
@@ -121,7 +121,12 @@ class OpusItem(Struct):
         """获取发布时间戳"""
         for module in self.item.modules:
             if module.module_type == "MODULE_TYPE_AUTHOR" and module.module_author:
-                return module.module_author.pub_ts
+                ts = module.module_author.pub_ts
+                # 防止 fromtimestamp 崩溃
+                try:
+                    return int(ts)
+                except (ValueError, TypeError):
+                    return None
         return None
 
     def gen_text_img(self) -> Generator[TextNode | ImageNode, None, None]:
