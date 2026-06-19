@@ -20,6 +20,9 @@ class Cookie:
     secure: bool
     expires: int
 
+    def __post_init__(self) -> None:
+        self.domain = self.domain.lower()
+
     def is_expired(self) -> bool:
         return self.expires != 0 and self.expires < int(time.time())
 
@@ -30,20 +33,37 @@ class Cookie:
         if self.secure and not secure:
             return False
 
-        if self.domain.startswith("."):
-            if not domain.endswith(self.domain[1:]):
-                return False
-        elif domain != self.domain:
+        if not self._domain_matches(domain):
             return False
 
-        return path.startswith(self.path)
+        return self._path_matches(path)
+
+    def _domain_matches(self, request_domain: str) -> bool:
+        cookie_domain = self.domain
+
+        if cookie_domain.startswith("."):
+            suffix = cookie_domain[1:]
+            return request_domain == suffix or request_domain.endswith(f".{suffix}")
+
+        return request_domain == cookie_domain
+
+    def _path_matches(self, request_path: str) -> bool:
+        if request_path == self.path:
+            return True
+        if not request_path.startswith(self.path):
+            return False
+        if self.path.endswith("/"):
+            return True
+        return (
+            len(request_path) > len(self.path) and request_path[len(self.path)] == "/"
+        )
 
 
 class CookieJar:
     def __init__(
         self, config: PluginConfig, parser_cfg: ParserItem, domain: str
     ) -> None:
-        self.domain = domain
+        self.domain = domain.lower()
 
         self.cookie_file = config.cookie_dir / f"{parser_cfg.name}_cookies.txt"
         self.cookies: list[Cookie] = []
@@ -64,20 +84,30 @@ class CookieJar:
     def file_exists(self) -> bool:
         return self.cookie_file.exists()
 
-    def get(self, path: str = "/", secure: bool = True) -> dict[str, str]:
-        return {
-            c.name: c.value for c in self.cookies if c.match(self.domain, path, secure)
-        }
+    def get(
+        self, path: str = "/", secure: bool = True, domain: str | None = None
+    ) -> dict[str, str]:
+        cookies: dict[str, str] = {}
+        for cookie in self._ordered_matching_cookies(
+            path=path, secure=secure, domain=domain
+        ):
+            cookies.setdefault(cookie.name, cookie.value)
+        return cookies
 
-    def get_cookie_header(self, path: str = "/", secure: bool = True) -> str:
-        cookies = self.get(path, secure)
-        return "; ".join(f"{k}={v}" for k, v in cookies.items())
+    def get_cookie_header(
+        self, path: str = "/", secure: bool = True, domain: str | None = None
+    ) -> str:
+        cookies = self._ordered_matching_cookies(
+            path=path, secure=secure, domain=domain
+        )
+        return "; ".join(f"{cookie.name}={cookie.value}" for cookie in cookies)
 
     def get_cookie_header_for_url(self, url: str) -> str:
         parsed = urlparse(url)
         if not parsed.hostname:
             return ""
         return self.get_cookie_header(
+            domain=parsed.hostname,
             path=parsed.path or "/",
             secure=parsed.scheme == "https",
         )
@@ -85,20 +115,96 @@ class CookieJar:
     def purge_expired(self) -> None:
         self.cookies = [c for c in self.cookies if not c.is_expired()]
         self._sync_cookies_str()
+        if self.cookie_file.exists() or self.cookies:
+            self.save_to_file()
+
+    def _matching_cookies(
+        self, path: str = "/", secure: bool = True, domain: str | None = None
+    ) -> list[Cookie]:
+        request_domain = (domain or self.domain).lower()
+        return [c for c in self.cookies if c.match(request_domain, path, secure)]
+
+    def _ordered_matching_cookies(
+        self, path: str = "/", secure: bool = True, domain: str | None = None
+    ) -> list[Cookie]:
+        return sorted(
+            self._matching_cookies(path=path, secure=secure, domain=domain),
+            key=lambda cookie: len(cookie.path),
+            reverse=True,
+        )
 
     def to_dict(self) -> dict[str, str]:
         """将 cookies 字符串转换为字典"""
-        res = {}
-        for cookie in self.cookies_str.split(";"):
-            name, value = cookie.strip().split("=", 1)
-            res[name] = value
-        return res
+        return self.get()
 
     # ---------------- persistence ----------------
 
     @staticmethod
+    def _normalize_cookie_newlines(cookies_str: str) -> str:
+        return cookies_str.replace("\r\n", "\n").replace("\r", "\n")
+
+    @staticmethod
     def clean_cookies_str(cookies_str: str) -> str:
-        return cookies_str.replace("\n", "").replace("\r", "").strip()
+        return CookieJar._normalize_cookie_newlines(cookies_str).strip(" \n")
+
+    @staticmethod
+    def _normalize_header_cookies_str(cookies_str: str) -> str:
+        return CookieJar.clean_cookies_str(cookies_str).replace("\n", "")
+
+    @staticmethod
+    def _is_netscape_cookie_file(cookies_str: str) -> bool:
+        valid_row_count = 0
+        for line in cookies_str.splitlines():
+            if line.strip().lower() == "# netscape http cookie file":
+                return True
+            if CookieJar._parse_netscape_cookie_line(line) is not None:
+                valid_row_count += 1
+                if valid_row_count >= 2:
+                    return True
+        return False
+
+    @staticmethod
+    def _parse_netscape_cookie_line(
+        line: str,
+    ) -> tuple[str, str, str, str, int, str, str] | None:
+        if not line.strip():
+            return None
+
+        line = line.lstrip()
+        if line.startswith("#") and not line.startswith("#HttpOnly_"):
+            return None
+
+        if line.startswith("#HttpOnly_"):
+            line = line.removeprefix("#HttpOnly_")
+
+        parts = line.split("\t")
+        if len(parts) != 7:
+            return None
+
+        domain, include_subdomains, path, secure, expires, name, value = parts
+        if not domain or not path or not name:
+            return None
+        if path[0] != "/":
+            return None
+        if any(sep in domain for sep in ("=", ";")):
+            return None
+        if any(char.isspace() for char in domain):
+            return None
+        if any(sep in name for sep in ("=", ";")):
+            return None
+        if any(char.isspace() for char in name):
+            return None
+        if include_subdomains.upper() not in {"TRUE", "FALSE"}:
+            return None
+        if secure.upper() not in {"TRUE", "FALSE"}:
+            return None
+
+        try:
+            expires_at = int(expires)
+        except ValueError:
+            return None
+
+        return domain, include_subdomains, path, secure, expires_at, name, value
 
     def _sync_cookies_str(self) -> None:
         self.cookies_str = "; ".join(f"{c.name}={c.value}" for c in self.cookies)
@@ -108,7 +214,16 @@ class CookieJar:
         if not cookies_str:
             return
 
-        for item in cookies_str.split(";"):
+        if self._is_netscape_cookie_file(cookies_str):
+            self._load_from_netscape_cookies_str(cookies_str)
+            return
+
+        self._load_from_header_cookies_str(cookies_str)
+
+    def _load_from_header_cookies_str(self, cookies_str: str) -> None:
+        normalized = self._normalize_header_cookies_str(cookies_str)
+
+        for item in normalized.split(";"):
             item = item.strip()
             if not item or "=" not in item:
                 continue
@@ -130,6 +245,34 @@ class CookieJar:
                     expires=0,
                 )
             )
+
+        self._sync_cookies_str()
+
+    def _load_from_netscape_cookies_str(self, cookies_str: str) -> None:
+        for line in cookies_str.splitlines():
+            parsed = self._parse_netscape_cookie_line(line)
+            if parsed is None:
+                continue
+
+            domain, include_subdomains, path, secure, expires_at, name, value = parsed
+
+            if include_subdomains.upper() == "TRUE":
+                if not domain.startswith("."):
+                    domain = f".{domain}"
+            else:
+                domain = domain.lstrip(".")
+
+            self.cookies.append(
+                Cookie(
+                    domain=domain,
+                    path=path,
+                    name=name,
+                    value=value,
+                    secure=secure.upper() == "TRUE",
+                    expires=expires_at,
+                )
+            )
+
         self._sync_cookies_str()
 
     def save_to_file(self) -> None:
