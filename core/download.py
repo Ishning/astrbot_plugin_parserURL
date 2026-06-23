@@ -89,28 +89,32 @@ class Downloader:
         headers: dict[str, str] | None = None,
         proxy: str | None = None,
     ) -> Path:
-        """流式下载"""
+        """流式下载，增加降级策略"""
         if not file_name:
             file_name = generate_file_name(url)
         file_path = self.cfg.cache_dir / file_name
         # 如果文件存在，则直接返回
         if file_path.exists():
             return file_path
-        headers = headers or self.default_headers
+        request_headers = headers or self.default_headers
         retries = self.cfg.download_retry_times
         for attempt in range(retries + 1):
             try:
+                if attempt > 0:
+                    logger.warning(f"[Downloader] 该下载降级了: {url}")
+                    request_headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                        "Accept": "*/*"
+                    }
+
                 async with self.client.get(
-                    url, headers=headers, allow_redirects=True, proxy=proxy
+                    url, headers=request_headers, allow_redirects=True, proxy=proxy
                 ) as response:
                     if response.status >= 400:
                         raise ClientError(f"HTTP {response.status} {response.reason}")
                     content_length = response.content_length
                     max_bytes = self.max_size * 1024 * 1024
 
-                    if content_length == 0:
-                        logger.warning(f"媒体 url: {url}, 大小为 0, 取消下载")
-                        raise ZeroSizeException
                     if content_length and content_length > max_bytes:
                         logger.warning(
                             f"媒体 url: {url} 大小 {content_length / 1024 / 1024:.2f} MB 超过 {self.max_size} MB, 取消下载"
@@ -118,7 +122,7 @@ class Downloader:
                         raise SizeLimitException
 
                     downloaded = 0
-                    with self.get_progress_bar(file_name, content_length) as bar:
+                    with self.get_progress_bar(file_name, content_length if content_length else None) as bar:
                         async with aiofiles.open(file_path, "wb") as file:
                             async for chunk in response.content.iter_chunked(
                                 1024 * 1024
@@ -144,7 +148,7 @@ class Downloader:
             except (ClientError, TimeoutError) as exc:
                 await safe_unlink(file_path)
                 if attempt < retries:
-                    await sleep(1 + attempt)
+                    await sleep(0.5 + attempt)
                     continue
                 logger.exception(f"下载失败 | url: {url}, file_path: {file_path}")
                 raise DownloadException("媒体下载失败") from exc
